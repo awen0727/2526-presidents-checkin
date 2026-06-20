@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#163f73">
+  <title>2526會長聯誼會｜管理者審核</title>
+  <link rel="stylesheet" href="styles.css?v=20260619-1">
+  <script src="config.js?v=20260619-1"></script>
+  <script src="common.js?v=20260619-1" defer></script>
+  <script src="admin.js?v=20260619-1" defer></script>
+</head>
+<body>
+  <header class="hero compact-hero">
+    <div class="eyebrow">Administrator</div>
+    <h1>管理者審核</h1>
+    <p>處理手機末四碼不符的 LINE 綁定申請。</p>
+  </header>
+
+  <main class="page-shell admin-shell">
+    <section id="loginPanel" class="card">
+      <h2>管理者登入</h2>
+      <label>管理密鑰
+        <input id="adminToken" type="password" autocomplete="current-password">
+      </label>
+      <button id="loginButton" type="button">進入管理頁</button>
+      <div id="loginMessage" class="message"></div>
+    </section>
+
+    <div id="adminApp" class="hidden">
+      <section class="stats-grid">
+        <article class="stat-card"><span>待確認</span><strong id="pendingCount">0</strong></article>
+        <article class="stat-card"><span>已綁定</span><strong id="boundCount">0</strong></article>
+        <article class="stat-card"><span>會長總數</span><strong id="memberCount">114</strong></article>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div><h2>待人工確認</h2><p class="muted">確認本人身分後，可修正完整手機號碼並核准 LINE 綁定。</p></div>
+          <button id="refreshButton" class="secondary small-button" type="button">重新整理</button>
+        </div>
+        <div id="adminMessage" class="message"></div>
+        <div id="noRequests" class="empty-state">目前沒有待確認申請。</div>
+        <div id="requestList" class="review-list"></div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

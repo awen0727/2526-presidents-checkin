@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#163f73">
+  <title>2526會長聯誼會 LINE 簽到</title>
+  <link rel="stylesheet" href="styles.css?v=20260619-1">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="config.js?v=20260619-1"></script>
+  <script src="common.js?v=20260619-1" defer></script>
+  <script src="checkin.js?v=20260619-2" defer></script>
+</head>
+<body>
+  <header class="hero">
+    <div class="eyebrow">2526 Presidents Fellowship</div>
+    <h1>會長聯誼會 LINE 簽到</h1>
+    <p>會長本人登入，首次完成手機末四碼核對後即可使用。</p>
+  </header>
+
+  <main class="page-shell">
+    <section id="profilePanel" class="card profile hidden">
+      <img id="profileImage" class="hidden" alt="LINE 個人頭像">
+      <div>
+        <span class="muted">LINE 登入者</span>
+        <strong id="lineName">讀取中</strong>
+      </div>
+    </section>
+
+    <section class="card">
+      <div id="statusMessage" class="message">正在連接 LINE...</div>
+    </section>
+
+    <section id="bindingPanel" class="card hidden">
+      <div class="step-label">第一次使用</div>
+      <h2>確認會長身分</h2>
+      <p class="muted">依序選擇專區、分區與分會，再輸入手機末四碼。</p>
+
+      <div class="form-grid">
+        <label>專區
+          <select id="zoneSelect"><option value="">請選擇專區</option></select>
+        </label>
+        <label>分區
+          <select id="divisionSelect" disabled><option value="">請先選專區</option></select>
+        </label>
+        <label>分會與會長
+          <select id="memberSelect" disabled><option value="">請先選分區</option></select>
+        </label>
+        <label>手機末四碼
+          <input id="phoneLast4" type="tel" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" placeholder="例如 1234">
+        </label>
+      </div>
+
+      <button id="bindingButton" type="button">核對並綁定 LINE</button>
+      <p class="privacy-note">完整手機號碼只保存在管理端，不會下載到此頁面。</p>
+    </section>
+
+    <section id="pendingPanel" class="card hidden">
+      <div class="status-icon pending-icon">!</div>
+      <h2>等待管理者確認</h2>
+      <p>手機末四碼未能自動核對。管理者確認並修正電話後，會完成 LINE 綁定。</p>
+      <button id="pendingRefreshButton" class="secondary" type="button">重新確認狀態</button>
+    </section>
+
+    <section id="checkinPanel" class="card hidden">
+      <div class="member-summary">
+        <span id="memberArea" class="badge"></span>
+        <h2 id="memberName"></h2>
+        <p id="memberClub" class="muted"></p>
+      </div>
+      <div id="eventBox" class="event-box"></div>
+      <button id="checkinButton" type="button">確認簽到</button>
+    </section>
+
+    <section id="successPanel" class="card success-card hidden">
+      <div class="status-icon success-icon">✓</div>
+      <h2>簽到完成</h2>
+      <p id="successText"></p>
+    </section>
+  </main>
+</body>
+</html>
