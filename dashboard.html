@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#163f73">
+  <title>2526會長聯誼會｜即時出席看板</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css?v=20260620-attendance1">
+  <script src="config.js?v=20260620-2"></script>
+  <script src="common.js?v=20260620-1" defer></script>
+  <script src="dashboard.js?v=20260620-1" defer></script>
+</head>
+<body class="dashboard-page">
+  <header class="display-header">
+    <img src="assets/annual-logo.jpg" alt="2025-2026年度 300A 2 官方 Logo">
+    <div>
+      <div class="eyebrow">Live Attendance</div>
+      <h1 id="dashboardEventName">2526會長聯誼會即時出席</h1>
+      <p id="dashboardEventMeta">正在讀取目前活動...</p>
+    </div>
+    <div id="dashboardUpdatedAt" class="updated-at"></div>
+  </header>
+
+  <main class="dashboard-shell">
+    <section class="dashboard-stats">
+      <article><span>今年參加</span><strong id="dashboardTotal">0</strong></article>
+      <article class="arrived-stat"><span>已出席</span><strong id="dashboardAttended">0</strong></article>
+      <article><span>尚未出席</span><strong id="dashboardAbsent">0</strong></article>
+      <article class="rate-stat"><span>出席率</span><strong><span id="dashboardRate">0</span>%</strong></article>
+    </section>
+
+    <section class="attendance-progress" aria-label="即時出席率">
+      <div id="dashboardProgressBar"></div>
+    </section>
+    <div id="dashboardMessage" class="message"></div>
+    <section id="dashboardEmpty" class="dashboard-empty">目前尚無出席紀錄。</section>
+    <section id="dashboardPeople" class="people-grid"></section>
+  </main>
+</body>
+</html>

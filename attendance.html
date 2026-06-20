@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#163f73">
+  <title>2526會長聯誼會｜出席查詢</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css?v=20260620-attendance1">
+  <script src="config.js?v=20260620-2"></script>
+  <script src="common.js?v=20260620-1" defer></script>
+  <script src="attendance.js?v=20260620-1" defer></script>
+</head>
+<body>
+  <header class="hero compact-hero">
+    <img class="hero-logo compact-logo" src="assets/annual-logo.jpg" alt="2025-2026年度 300A 2 官方 Logo">
+    <div class="eyebrow">Attendance Report</div>
+    <h1>會長聯誼會出席查詢</h1>
+    <p>查詢單場出席狀態與年度出席率。</p>
+  </header>
+
+  <main class="page-shell report-shell">
+    <section id="reportLoginPanel" class="card login-card">
+      <h2>管理者登入</h2>
+      <label>管理密鑰<input id="reportAdminToken" type="password" autocomplete="current-password"></label>
+      <button id="reportLoginButton" type="button">查詢出席紀錄</button>
+      <div id="reportLoginMessage" class="message"></div>
+    </section>
+
+    <div id="reportApp" class="hidden">
+      <div class="report-nav">
+        <a class="button-link secondary-link" href="admin.html">返回管理中心</a>
+        <a class="button-link secondary-link" href="dashboard.html" target="_blank" rel="noopener">即時出席看板</a>
+      </div>
+
+      <section class="card report-filters">
+        <label>活動<select id="reportEventFilter"></select></label>
+        <label>出席狀態
+          <select id="reportStatusFilter">
+            <option value="all">全部</option>
+            <option value="attended">已出席</option>
+            <option value="absent">未出席</option>
+          </select>
+        </label>
+        <label>搜尋會長<input id="reportMemberSearch" type="search" placeholder="姓名、分會、專區或分區"></label>
+      </section>
+      <div id="reportMessage" class="message"></div>
+
+      <section class="stats-grid four-stats report-stats">
+        <article class="stat-card"><span>活動場次</span><strong id="reportEventCount">0</strong></article>
+        <article class="stat-card"><span>今年參加</span><strong id="reportMemberCount">0</strong></article>
+        <article class="stat-card"><span>總出席人次</span><strong id="reportAttendanceCount">0</strong></article>
+        <article class="stat-card"><span>平均每場</span><strong id="reportAverage">0</strong></article>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div><h2 id="reportSelectedEventName">單場出席狀態</h2><p id="reportSelectedEventMeta" class="muted"></p></div>
+          <span id="reportSelectedEventBadge" class="badge"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>狀態</th><th>專區／分區</th><th>分會</th><th>會長</th><th>簽到時間</th><th>來源</th></tr></thead>
+            <tbody id="reportEventRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>年度出席統計</h2>
+        <p class="muted">點選會長姓名可查看每一場活動的出席明細。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>會長</th><th>分會</th><th>出席</th><th>未出席</th><th>出席率</th></tr></thead>
+            <tbody id="reportSummaryRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="reportDetailPanel" class="card hidden">
+        <div class="section-heading">
+          <h2 id="reportDetailName">出席明細</h2>
+          <button id="reportDetailClose" class="secondary small-button" type="button">關閉</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>日期</th><th>活動</th><th>狀態</th><th>簽到時間</th><th>來源</th></tr></thead>
+            <tbody id="reportDetailRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

@@ -22,9 +22,9 @@
   }
 
   async function loadRoster() {
-    const response = await fetch("data/members.json", { cache: "no-store" });
-    if (!response.ok) throw new Error("無法讀取會長名冊");
-    members = await response.json();
+    const result = await post({ action: "getRoster" });
+    members = result.members || [];
+    if (!members.length) throw new Error("目前沒有今年參加的會長名冊");
     fillSelect(document.getElementById("zoneSelect"), unique(members.map(member => member.zone)), "請選擇專區");
   }
 
@@ -39,12 +39,14 @@
       document.getElementById("memberArea").textContent = `${session.member.zone} · ${session.member.division}`;
       document.getElementById("memberName").textContent = session.member.name || "姓名待補";
       document.getElementById("memberClub").textContent = `${session.member.club}會 會長`;
-      document.getElementById("eventBox").textContent = session.event
+      document.getElementById("eventBox").textContent = session.participationInactive
+        ? "目前列為今年未參加，若資料有誤請聯絡管理者。"
+        : session.event
         ? `${session.event.event_date}｜${session.event.name}`
         : "目前沒有開放簽到的活動";
-      document.getElementById("checkinButton").disabled = !session.event;
+      document.getElementById("checkinButton").disabled = session.participationInactive || !session.event;
       showPanel("checkinPanel");
-      showMessage(statusMessage, "LINE 身分已綁定", "success");
+      showMessage(statusMessage, session.participationInactive ? "今年未參加，無法簽到" : "LINE 身分已綁定", session.participationInactive ? "error" : "success");
       return;
     }
     if (session.bindingPending) {

@@ -5,7 +5,7 @@
   const tokenInput = document.getElementById("adminToken");
   const loginMessage = document.getElementById("loginMessage");
   const adminMessage = document.getElementById("adminMessage");
-  let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null };
+  let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0 };
   tokenInput.value = sessionStorage.getItem("presidentsAdminToken") || "";
 
   const today = new Date();
@@ -61,6 +61,7 @@
     document.getElementById("pendingCount").textContent = state.requests.length;
     document.getElementById("boundCount").textContent = state.boundCount;
     document.getElementById("memberCount").textContent = state.memberCount;
+    document.getElementById("notParticipatingCount").textContent = state.notParticipatingCount || 0;
     document.getElementById("attendanceCount").textContent = state.attendance.length;
 
     const currentName = document.getElementById("currentEventName");
@@ -87,7 +88,7 @@
     const select = document.getElementById("manualMember");
     select.replaceChildren(new Option("請選擇尚未簽到的會長", ""));
     state.members
-      .filter(member => !attendedIds.has(member.member_id))
+      .filter(member => member.participating && !attendedIds.has(member.member_id))
       .sort((a, b) => `${a.zone}${a.division}${a.club}`.localeCompare(`${b.zone}${b.division}${b.club}`, "zh-Hant"))
       .forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}`, member.member_id)));
     select.disabled = !state.currentEvent;
@@ -192,10 +193,13 @@
 
   function renderMembers() {
     const query = document.getElementById("memberSearch").value.trim().toLowerCase();
+    const participation = document.getElementById("participationFilter").value;
     const list = document.getElementById("memberList");
     list.replaceChildren();
     state.members.filter(member => {
       const text = [member.zone, member.division, member.club, member.name].join(" ").toLowerCase();
+      if (participation === "participating" && !member.participating) return false;
+      if (participation === "not_participating" && member.participating) return false;
       return !query || text.includes(query);
     }).forEach(member => {
       const card = makeElement("article", "member-admin-card");
@@ -204,6 +208,7 @@
       info.append(
         makeElement("strong", "", `${member.club}｜${member.name || "姓名待補"}`),
         makeElement("span", "muted", `${member.zone} · ${member.division}`),
+        makeElement("span", member.participating ? "participating-state" : "not-participating-state", member.participating ? "今年參加" : "今年未參加"),
         makeElement("span", member.bound ? "bound-state" : "unbound-state", member.bound
           ? `LINE 已綁定：${member.line_display_name || "名稱未記錄"}`
           : "LINE 未綁定")
@@ -221,6 +226,12 @@
           .catch(error => showMessage(adminMessage, error.message, "error"));
       });
       controls.append(phoneInput, savePhone);
+      controls.appendChild(makeButton(member.participating ? "改為今年未參加" : "改為今年參加", "secondary compact-button", () => {
+        runAction(
+          { action: "adminSetParticipation", memberId: member.member_id, participating: !member.participating },
+          `確定將「${member.name || member.club}」改為${member.participating ? "今年未參加" : "今年參加"}嗎？`
+        ).catch(error => showMessage(adminMessage, error.message, "error"));
+      }));
       if (member.bound) controls.appendChild(makeButton("解除 LINE", "danger secondary compact-button", () => {
         runAction(
           { action: "adminUnbindMember", memberId: member.member_id },
@@ -309,6 +320,7 @@
   });
   document.getElementById("exportAttendanceButton").addEventListener("click", exportAttendance);
   document.getElementById("memberSearch").addEventListener("input", renderMembers);
+  document.getElementById("participationFilter").addEventListener("change", renderMembers);
 
   const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
     && new URLSearchParams(location.search).get("preview") === "1";
@@ -316,13 +328,14 @@
     state = {
       requests: [],
       memberCount: 114,
+      notParticipatingCount: 1,
       boundCount: 38,
       currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" },
       events: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試", status: "open" }],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [
-        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", bound: true, line_display_name: "LINE 預覽" },
-        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", bound: false, line_display_name: "" }
+        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_display_name: "LINE 預覽" },
+        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_display_name: "" }
       ]
     };
     render();

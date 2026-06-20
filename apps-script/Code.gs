@@ -6,7 +6,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-20-admin-2";
+const API_VERSION = "2526-presidents-2026-06-20-attendance-3";
 
 function doGet(e) {
   try {
@@ -31,6 +31,8 @@ function route_(payload) {
   const action = String(payload.action || "");
   const publicActions = {
     getSession: getSession_,
+    getRoster: getRoster_,
+    dashboard: dashboard_,
     requestBinding: requestBinding_,
     checkIn: checkIn_
   };
@@ -43,7 +45,9 @@ function route_(payload) {
     adminManualCheckIn: adminManualCheckIn_,
     adminRemoveAttendance: adminRemoveAttendance_,
     adminUpdateMemberPhone: adminUpdateMemberPhone_,
-    adminUnbindMember: adminUnbindMember_
+    adminUnbindMember: adminUnbindMember_,
+    adminSetParticipation: adminSetParticipation_,
+    adminAttendanceReport: adminAttendanceReport_
   };
   if (publicActions[action]) return publicActions[action](payload);
   if (adminActions[action]) {
@@ -56,16 +60,58 @@ function route_(payload) {
 function getSession_(payload) {
   const line = verifyLineToken_(payload.idToken);
   const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+  const participating = Boolean(member && isParticipating_(member));
   const pending = findRows_(SHEETS.BINDINGS, row => row.line_user_id === line.sub && row.status === "pending").length > 0;
   const event = getOpenEvent_();
-  const alreadyCheckedIn = Boolean(member && event && findRows_(SHEETS.ATTENDANCE, row =>
+  const alreadyCheckedIn = Boolean(participating && event && findRows_(SHEETS.ATTENDANCE, row =>
     row.event_id === event.event_id && row.member_id === member.member_id
   ).length);
   return {
     member: member ? publicMember_(member) : null,
-    event: event ? publicEvent_(event) : null,
+    event: participating && event ? publicEvent_(event) : null,
     bindingPending: pending,
+    participationInactive: Boolean(member && !participating),
     alreadyCheckedIn
+  };
+}
+
+function getRoster_() {
+  return {
+    members: rows_(SHEETS.MEMBERS)
+      .filter(isParticipating_)
+      .map(publicMember_)
+  };
+}
+
+function dashboard_() {
+  const event = getOpenEvent_();
+  const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
+  if (!event) {
+    return { event: null, totalCount: members.length, attendedCount: 0, absentCount: members.length, attendanceRate: 0, list: [] };
+  }
+  const memberById = {};
+  members.forEach(member => { memberById[member.member_id] = member; });
+  const records = findRows_(SHEETS.ATTENDANCE, row => row.event_id === event.event_id && memberById[row.member_id]);
+  const seen = {};
+  const list = records.filter(record => {
+    if (seen[record.member_id]) return false;
+    seen[record.member_id] = true;
+    return true;
+  }).map(record => ({
+    member_id: record.member_id,
+    name: record.name_snapshot,
+    club: record.club_snapshot,
+    checkin_at: record.checkin_at,
+    source: record.source
+  })).sort((a, b) => String(a.checkin_at).localeCompare(String(b.checkin_at)));
+  const attendedCount = list.length;
+  return {
+    event: publicEvent_(event),
+    totalCount: members.length,
+    attendedCount,
+    absentCount: Math.max(0, members.length - attendedCount),
+    attendanceRate: members.length ? Math.round(attendedCount / members.length * 1000) / 10 : 0,
+    list
   };
 }
 
@@ -80,7 +126,7 @@ function requestBinding_(payload) {
   try {
     if (findOne_(SHEETS.MEMBERS, "line_user_id", line.sub)) throw new Error("此 LINE 帳號已綁定會長資料");
     const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-    if (!member || member.status !== "active") throw new Error("找不到有效的會長資料");
+    if (!member || !isParticipating_(member)) throw new Error("此會長未列入今年參加名單");
     if (member.line_user_id) throw new Error("此會長資料已綁定其他 LINE 帳號，請聯絡管理者");
     const existing = findRows_(SHEETS.BINDINGS, row => row.line_user_id === line.sub && row.status === "pending")[0];
     if (existing) return { status: "pending", message: "申請已送出，請等待管理者確認" };
@@ -120,7 +166,7 @@ function checkIn_(payload) {
   lock.waitLock(10000);
   try {
     const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
-    if (!member || member.status !== "active") throw new Error("尚未完成有效的 LINE 身分綁定");
+    if (!member || !isParticipating_(member)) throw new Error("您未列入今年參加名單");
     const event = getOpenEvent_();
     if (!event) throw new Error("目前沒有開放簽到的活動");
     const duplicate = findRows_(SHEETS.ATTENDANCE, row =>
@@ -167,8 +213,10 @@ function adminOverview_() {
   });
   return {
     requests,
-    memberCount: members.filter(member => member.status === "active").length,
-    boundCount: members.filter(member => member.status === "active" && member.line_user_id).length,
+    memberCount: members.filter(isParticipating_).length,
+    totalMemberCount: members.length,
+    notParticipatingCount: members.filter(member => !isParticipating_(member)).length,
+    boundCount: members.filter(member => isParticipating_(member) && member.line_user_id).length,
     currentEvent: openEvent ? publicEvent_(openEvent) : null,
     events: events.map(event => ({
       event_id: event.event_id,
@@ -184,13 +232,14 @@ function adminOverview_() {
       checkin_at: row.checkin_at,
       source: row.source
     })),
-    members: members.filter(member => member.status === "active").map(member => ({
+    members: members.map(member => ({
       member_id: member.member_id,
       zone: member.zone,
       division: member.division,
       club: member.club,
       name: member.name,
       masked_phone: maskPhone_(member.phone),
+      participating: isParticipating_(member),
       bound: Boolean(member.line_user_id),
       line_display_name: member.line_display_name || ""
     }))
@@ -202,7 +251,7 @@ function adminApproveBinding_(payload) {
   const request = findOne_(SHEETS.BINDINGS, "request_id", requestId);
   if (!request || request.status !== "pending") throw new Error("找不到待確認申請");
   const member = findOne_(SHEETS.MEMBERS, "member_id", request.member_id);
-  if (!member || member.status !== "active") throw new Error("找不到有效會長資料");
+  if (!member || !isParticipating_(member)) throw new Error("此會長未列入今年參加名單");
   if (member.line_user_id && member.line_user_id !== request.line_user_id) throw new Error("此會長已綁定其他 LINE 帳號");
   const lineOwner = findOne_(SHEETS.MEMBERS, "line_user_id", request.line_user_id);
   if (lineOwner && lineOwner.member_id !== member.member_id) throw new Error("此 LINE 帳號已綁定其他會長");
@@ -272,7 +321,7 @@ function adminManualCheckIn_(payload) {
   const event = getOpenEvent_();
   if (!event) throw new Error("目前沒有開放簽到的活動");
   const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-  if (!member || member.status !== "active") throw new Error("找不到有效會長資料");
+  if (!member || !isParticipating_(member)) throw new Error("此會長未列入今年參加名單");
   const duplicate = findRows_(SHEETS.ATTENDANCE, row =>
     row.event_id === event.event_id && row.member_id === member.member_id
   )[0];
@@ -325,6 +374,91 @@ function adminUnbindMember_(payload) {
   return { message: "LINE 綁定已解除" };
 }
 
+function adminSetParticipation_(payload) {
+  const memberId = cleanText_(payload.memberId, 30, "會長編號");
+  const participating = payload.participating === true;
+  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
+  if (!member) throw new Error("找不到會長資料");
+  updateRow_(SHEETS.MEMBERS, member._row, {
+    status: participating ? "participating" : "not_participating",
+    updated_at: now_()
+  });
+  audit_("participation_changed", "admin", memberId, participating ? "participating" : "not_participating");
+  return { message: participating ? "已列為今年參加" : "已列為今年未參加" };
+}
+
+function adminAttendanceReport_(payload) {
+  const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
+  const events = rows_(SHEETS.EVENTS);
+  const allAttendance = rows_(SHEETS.ATTENDANCE);
+  const requestedEventId = String(payload.eventId || "");
+  const selectedEvent = events.find(event => event.event_id === requestedEventId)
+    || events.find(event => event.status === "open")
+    || events[events.length - 1]
+    || null;
+  const selectedRecords = selectedEvent
+    ? allAttendance.filter(record => record.event_id === selectedEvent.event_id)
+    : [];
+  const selectedByMember = {};
+  selectedRecords.forEach(record => {
+    if (!selectedByMember[record.member_id]) selectedByMember[record.member_id] = record;
+  });
+  const selectedEventMembers = members.map(member => {
+    const record = selectedByMember[member.member_id];
+    return {
+      member_id: member.member_id,
+      zone: member.zone,
+      division: member.division,
+      club: member.club,
+      name: member.name,
+      attended: Boolean(record),
+      checkin_at: record ? record.checkin_at : "",
+      source: record ? record.source : ""
+    };
+  });
+  const eventIds = events.map(event => event.event_id);
+  const uniqueAttendance = {};
+  allAttendance.forEach(record => { uniqueAttendance[`${record.event_id}|${record.member_id}`] = true; });
+  const memberSummary = members.map(member => {
+    const attendedCount = eventIds.filter(eventId => uniqueAttendance[`${eventId}|${member.member_id}`]).length;
+    const absentCount = Math.max(0, events.length - attendedCount);
+    return {
+      member_id: member.member_id,
+      zone: member.zone,
+      division: member.division,
+      club: member.club,
+      name: member.name,
+      attended_count: attendedCount,
+      absent_count: absentCount,
+      attendance_rate: events.length ? Math.round(attendedCount / events.length * 1000) / 10 : 0,
+      records: events.map(event => {
+        const record = allAttendance.find(item => item.event_id === event.event_id && item.member_id === member.member_id);
+        return {
+          event_id: event.event_id,
+          event_date: event.event_date,
+          event_name: event.name,
+          attended: Boolean(record),
+          checkin_at: record ? record.checkin_at : "",
+          source: record ? record.source : ""
+        };
+      })
+    };
+  });
+  const attendanceCount = Object.keys(uniqueAttendance).filter(key => eventIds.includes(key.split("|")[0])).length;
+  return {
+    events: events.map(publicEvent_),
+    selectedEvent: selectedEvent ? publicEvent_(selectedEvent) : null,
+    selectedEventMembers,
+    members: memberSummary,
+    summary: {
+      event_count: events.length,
+      member_count: members.length,
+      attendance_count: attendanceCount,
+      average_attendance: events.length ? Math.round(attendanceCount / events.length * 10) / 10 : 0
+    }
+  };
+}
+
 function closeOpenEvents_() {
   findRows_(SHEETS.EVENTS, row => row.status === "open").forEach(event => {
     updateRow_(SHEETS.EVENTS, event._row, { status: "closed" });
@@ -360,6 +494,11 @@ function publicMember_(member) {
     club: member.club,
     name: member.name
   };
+}
+
+function isParticipating_(member) {
+  const status = String((member && member.status) || "").trim();
+  return status === "active" || status === "participating" || status === "";
 }
 
 function publicEvent_(event) {

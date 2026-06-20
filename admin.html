@@ -8,10 +8,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260620-logo1">
+  <link rel="stylesheet" href="styles.css?v=20260620-attendance1">
   <script src="config.js?v=20260620-2"></script>
   <script src="common.js?v=20260620-1" defer></script>
-  <script src="admin.js?v=20260620-2" defer></script>
+  <script src="admin.js?v=20260620-attendance1" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -34,14 +34,19 @@
     <div id="adminApp" class="hidden">
       <div class="admin-toolbar">
         <div id="adminMessage" class="message"></div>
-        <button id="refreshButton" class="secondary small-button" type="button">重新整理</button>
+        <div class="admin-toolbar-actions">
+          <a class="button-link secondary-link" href="dashboard.html" target="_blank" rel="noopener">即時出席看板</a>
+          <a class="button-link secondary-link" href="attendance.html">出席查詢</a>
+          <button id="refreshButton" class="secondary small-button" type="button">重新整理</button>
+        </div>
       </div>
 
-      <section class="stats-grid four-stats">
+      <section class="stats-grid five-stats">
         <article class="stat-card"><span>本場已簽到</span><strong id="attendanceCount">0</strong></article>
+        <article class="stat-card"><span>今年參加</span><strong id="memberCount">114</strong></article>
+        <article class="stat-card"><span>今年未參加</span><strong id="notParticipatingCount">0</strong></article>
         <article class="stat-card"><span>待確認</span><strong id="pendingCount">0</strong></article>
         <article class="stat-card"><span>LINE 已綁定</span><strong id="boundCount">0</strong></article>
-        <article class="stat-card"><span>會長總數</span><strong id="memberCount">114</strong></article>
       </section>
 
       <nav class="admin-tabs" aria-label="管理功能">
@@ -111,7 +116,14 @@
         <section class="card">
           <div class="section-heading">
             <div><h2>會長資料</h2><p class="muted">搜尋姓名、分會、專區或分區。</p></div>
-            <input id="memberSearch" class="search-input" type="search" placeholder="輸入關鍵字搜尋">
+            <div class="member-filters">
+              <select id="participationFilter">
+                <option value="all">全部會長</option>
+                <option value="participating">今年參加</option>
+                <option value="not_participating">今年未參加</option>
+              </select>
+              <input id="memberSearch" class="search-input" type="search" placeholder="輸入關鍵字搜尋">
+            </div>
           </div>
           <div id="memberList" class="manage-list"></div>
         </section>

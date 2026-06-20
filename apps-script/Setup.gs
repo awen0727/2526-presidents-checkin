@@ -59,7 +59,7 @@ function importMembersFromSource() {
       club,
       String(sourceRow[headers.indexOf("會長姓名")] || "").trim(),
       normalizePhone_(sourceRow[headers.indexOf("電話")]),
-      previous.status || "active",
+      previous.status || "participating",
       previous.line_user_id || "",
       previous.line_display_name || "",
       now_()
