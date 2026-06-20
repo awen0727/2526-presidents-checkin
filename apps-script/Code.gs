@@ -6,7 +6,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-19-1";
+const API_VERSION = "2526-presidents-2026-06-20-admin-2";
 
 function doGet(e) {
   try {
@@ -37,7 +37,13 @@ function route_(payload) {
   const adminActions = {
     adminOverview: adminOverview_,
     adminApproveBinding: adminApproveBinding_,
-    adminRejectBinding: adminRejectBinding_
+    adminRejectBinding: adminRejectBinding_,
+    adminCreateEvent: adminCreateEvent_,
+    adminSetEventStatus: adminSetEventStatus_,
+    adminManualCheckIn: adminManualCheckIn_,
+    adminRemoveAttendance: adminRemoveAttendance_,
+    adminUpdateMemberPhone: adminUpdateMemberPhone_,
+    adminUnbindMember: adminUnbindMember_
   };
   if (publicActions[action]) return publicActions[action](payload);
   if (adminActions[action]) {
@@ -139,6 +145,11 @@ function checkIn_(payload) {
 
 function adminOverview_() {
   const members = rows_(SHEETS.MEMBERS);
+  const events = rows_(SHEETS.EVENTS);
+  const openEvent = events.find(event => event.status === "open") || null;
+  const attendance = openEvent
+    ? findRows_(SHEETS.ATTENDANCE, row => row.event_id === openEvent.event_id)
+    : [];
   const requests = findRows_(SHEETS.BINDINGS, row => row.status === "pending").map(request => {
     const member = members.find(item => item.member_id === request.member_id) || {};
     return {
@@ -157,7 +168,32 @@ function adminOverview_() {
   return {
     requests,
     memberCount: members.filter(member => member.status === "active").length,
-    boundCount: members.filter(member => member.status === "active" && member.line_user_id).length
+    boundCount: members.filter(member => member.status === "active" && member.line_user_id).length,
+    currentEvent: openEvent ? publicEvent_(openEvent) : null,
+    events: events.map(event => ({
+      event_id: event.event_id,
+      event_date: event.event_date,
+      name: event.name,
+      status: event.status
+    })),
+    attendance: attendance.map(row => ({
+      attendance_id: row.attendance_id,
+      member_id: row.member_id,
+      name: row.name_snapshot,
+      club: row.club_snapshot,
+      checkin_at: row.checkin_at,
+      source: row.source
+    })),
+    members: members.filter(member => member.status === "active").map(member => ({
+      member_id: member.member_id,
+      zone: member.zone,
+      division: member.division,
+      club: member.club,
+      name: member.name,
+      masked_phone: maskPhone_(member.phone),
+      bound: Boolean(member.line_user_id),
+      line_display_name: member.line_display_name || ""
+    }))
   };
 }
 
@@ -199,6 +235,100 @@ function adminRejectBinding_(payload) {
   });
   audit_("binding_rejected", "admin", request.member_id, request.line_user_id);
   return { message: "申請已拒絕" };
+}
+
+function adminCreateEvent_(payload) {
+  const name = cleanText_(payload.name, 100, "活動名稱");
+  const eventDate = cleanText_(payload.eventDate, 10, "活動日期");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) throw new Error("活動日期格式不正確");
+  const shouldOpen = payload.open !== false;
+  if (shouldOpen) closeOpenEvents_();
+  const eventId = id_("EV");
+  append_(SHEETS.EVENTS, {
+    event_id: eventId,
+    event_date: eventDate,
+    name,
+    status: shouldOpen ? "open" : "closed",
+    created_at: now_()
+  });
+  audit_("event_created", "admin", eventId, `${eventDate} ${name}`);
+  return { message: shouldOpen ? "活動已建立並開放簽到" : "活動已建立" };
+}
+
+function adminSetEventStatus_(payload) {
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const status = String(payload.status || "");
+  if (!["open", "closed"].includes(status)) throw new Error("活動狀態不正確");
+  const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+  if (!event) throw new Error("找不到活動");
+  if (status === "open") closeOpenEvents_();
+  updateRow_(SHEETS.EVENTS, event._row, { status });
+  audit_("event_status_changed", "admin", eventId, status);
+  return { message: status === "open" ? "活動已開放簽到" : "活動已關閉" };
+}
+
+function adminManualCheckIn_(payload) {
+  const memberId = cleanText_(payload.memberId, 30, "會長編號");
+  const event = getOpenEvent_();
+  if (!event) throw new Error("目前沒有開放簽到的活動");
+  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
+  if (!member || member.status !== "active") throw new Error("找不到有效會長資料");
+  const duplicate = findRows_(SHEETS.ATTENDANCE, row =>
+    row.event_id === event.event_id && row.member_id === member.member_id
+  )[0];
+  if (duplicate) throw new Error("此會長已完成本場簽到");
+  const attendanceId = id_("AT");
+  append_(SHEETS.ATTENDANCE, {
+    attendance_id: attendanceId,
+    event_id: event.event_id,
+    member_id: member.member_id,
+    name_snapshot: member.name,
+    club_snapshot: member.club,
+    checkin_at: now_(),
+    source: "ADMIN"
+  });
+  audit_("manual_check_in", "admin", member.member_id, event.event_id);
+  return { message: `${member.name || member.club + "會會長"}，已由管理者完成簽到` };
+}
+
+function adminRemoveAttendance_(payload) {
+  const attendanceId = cleanText_(payload.attendanceId, 80, "簽到編號");
+  const attendance = findOne_(SHEETS.ATTENDANCE, "attendance_id", attendanceId);
+  if (!attendance) throw new Error("找不到簽到紀錄");
+  sheet_(SHEETS.ATTENDANCE).deleteRow(attendance._row);
+  audit_("attendance_removed", "admin", attendance.member_id, attendanceId);
+  return { message: "簽到紀錄已撤銷" };
+}
+
+function adminUpdateMemberPhone_(payload) {
+  const memberId = cleanText_(payload.memberId, 30, "會長編號");
+  const phone = normalizePhone_(payload.phone);
+  if (phone.length < 8 || phone.length > 15) throw new Error("完整電話格式不正確");
+  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
+  if (!member) throw new Error("找不到會長資料");
+  updateRow_(SHEETS.MEMBERS, member._row, { phone, updated_at: now_() });
+  audit_("member_phone_updated", "admin", memberId, "phone updated");
+  return { message: "電話已更新" };
+}
+
+function adminUnbindMember_(payload) {
+  const memberId = cleanText_(payload.memberId, 30, "會長編號");
+  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
+  if (!member) throw new Error("找不到會長資料");
+  if (!member.line_user_id) throw new Error("此會長尚未綁定 LINE");
+  updateRow_(SHEETS.MEMBERS, member._row, {
+    line_user_id: "",
+    line_display_name: "",
+    updated_at: now_()
+  });
+  audit_("member_unbound", "admin", memberId, member.line_user_id);
+  return { message: "LINE 綁定已解除" };
+}
+
+function closeOpenEvents_() {
+  findRows_(SHEETS.EVENTS, row => row.status === "open").forEach(event => {
+    updateRow_(SHEETS.EVENTS, event._row, { status: "closed" });
+  });
 }
 
 function verifyLineToken_(idToken) {

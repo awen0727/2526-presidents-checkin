@@ -4,45 +4,114 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#163f73">
-  <title>2526會長聯誼會｜管理者審核</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-1">
-  <script src="config.js?v=20260619-1"></script>
-  <script src="common.js?v=20260619-1" defer></script>
-  <script src="admin.js?v=20260619-1" defer></script>
+  <title>2526會長聯誼會｜管理中心</title>
+  <link rel="stylesheet" href="styles.css?v=20260620-2">
+  <script src="config.js?v=20260620-1"></script>
+  <script src="common.js?v=20260620-1" defer></script>
+  <script src="admin.js?v=20260620-2" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
     <div class="eyebrow">Administrator</div>
-    <h1>管理者審核</h1>
-    <p>處理手機末四碼不符的 LINE 綁定申請。</p>
+    <h1>會長聯誼會管理中心</h1>
+    <p>活動、簽到、身分審核與會長資料集中管理。</p>
   </header>
 
   <main class="page-shell admin-shell">
-    <section id="loginPanel" class="card">
+    <section id="loginPanel" class="card login-card">
       <h2>管理者登入</h2>
       <label>管理密鑰
         <input id="adminToken" type="password" autocomplete="current-password">
       </label>
-      <button id="loginButton" type="button">進入管理頁</button>
+      <button id="loginButton" type="button">進入管理中心</button>
       <div id="loginMessage" class="message"></div>
     </section>
 
     <div id="adminApp" class="hidden">
-      <section class="stats-grid">
+      <div class="admin-toolbar">
+        <div id="adminMessage" class="message"></div>
+        <button id="refreshButton" class="secondary small-button" type="button">重新整理</button>
+      </div>
+
+      <section class="stats-grid four-stats">
+        <article class="stat-card"><span>本場已簽到</span><strong id="attendanceCount">0</strong></article>
         <article class="stat-card"><span>待確認</span><strong id="pendingCount">0</strong></article>
-        <article class="stat-card"><span>已綁定</span><strong id="boundCount">0</strong></article>
+        <article class="stat-card"><span>LINE 已綁定</span><strong id="boundCount">0</strong></article>
         <article class="stat-card"><span>會長總數</span><strong id="memberCount">114</strong></article>
       </section>
 
-      <section class="card">
-        <div class="section-heading">
-          <div><h2>待人工確認</h2><p class="muted">確認本人身分後，可修正完整手機號碼並核准 LINE 綁定。</p></div>
-          <button id="refreshButton" class="secondary small-button" type="button">重新整理</button>
-        </div>
-        <div id="adminMessage" class="message"></div>
-        <div id="noRequests" class="empty-state">目前沒有待確認申請。</div>
-        <div id="requestList" class="review-list"></div>
-      </section>
+      <nav class="admin-tabs" aria-label="管理功能">
+        <button class="admin-tab active" data-tab="today" type="button">今日簽到</button>
+        <button class="admin-tab" data-tab="events" type="button">活動管理</button>
+        <button class="admin-tab" data-tab="reviews" type="button">身分審核</button>
+        <button class="admin-tab" data-tab="members" type="button">會長管理</button>
+      </nav>
+
+      <div id="todayTab" class="admin-tab-panel">
+        <section class="card current-event-card">
+          <div class="section-heading">
+            <div>
+              <span id="eventStatusBadge" class="badge">尚未開放</span>
+              <h2 id="currentEventName">目前沒有開放活動</h2>
+              <p id="currentEventMeta" class="muted">請到活動管理建立或開放活動。</p>
+            </div>
+            <button id="toggleEventButton" class="secondary small-button hidden" type="button">關閉簽到</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>現場代為簽到</h2>
+          <p class="muted">會長沒有帶手機時，管理者可搜尋並代為簽到。</p>
+          <div class="inline-form">
+            <select id="manualMember"><option value="">請選擇尚未簽到的會長</option></select>
+            <button id="manualCheckinButton" type="button">代為簽到</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div><h2>本場簽到名單</h2><p class="muted">LINE 與管理者代簽會標示不同來源。</p></div>
+            <button id="exportAttendanceButton" class="secondary small-button" type="button">匯出 CSV</button>
+          </div>
+          <div id="noAttendance" class="empty-state">目前尚無簽到紀錄。</div>
+          <div id="attendanceList" class="manage-list"></div>
+        </section>
+      </div>
+
+      <div id="eventsTab" class="admin-tab-panel hidden">
+        <section class="card">
+          <h2>建立活動</h2>
+          <div class="form-grid event-form">
+            <label>活動日期<input id="eventDate" type="date"></label>
+            <label>活動名稱<input id="eventName" maxlength="100" placeholder="例如：七月份會長聯誼會"></label>
+          </div>
+          <button id="createEventButton" type="button">建立並開放簽到</button>
+        </section>
+        <section class="card">
+          <h2>活動紀錄</h2>
+          <div id="noEvents" class="empty-state">尚未建立活動。</div>
+          <div id="eventList" class="manage-list"></div>
+        </section>
+      </div>
+
+      <div id="reviewsTab" class="admin-tab-panel hidden">
+        <section class="card">
+          <h2>待人工確認</h2>
+          <p class="muted">確認本人身分後，可修正完整手機號碼並核准 LINE 綁定。</p>
+          <div id="noRequests" class="empty-state">目前沒有待確認申請。</div>
+          <div id="requestList" class="review-list"></div>
+        </section>
+      </div>
+
+      <div id="membersTab" class="admin-tab-panel hidden">
+        <section class="card">
+          <div class="section-heading">
+            <div><h2>會長資料</h2><p class="muted">搜尋姓名、分會、專區或分區。</p></div>
+            <input id="memberSearch" class="search-input" type="search" placeholder="輸入關鍵字搜尋">
+          </div>
+          <div id="memberList" class="manage-list"></div>
+        </section>
+      </div>
     </div>
   </main>
 </body>
