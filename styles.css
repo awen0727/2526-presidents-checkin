@@ -130,7 +130,7 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 .event-form label { margin: 0; }
 .search-input { width: min(100%, 280px); min-height: 42px; }
 .member-filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.member-filters select { width: auto; min-height: 42px; }
+.member-filters select { width: auto; min-width: 140px; min-height: 42px; }
 .member-admin-card { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: #fbfcfe; }
 .member-controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 8px; margin-top: 14px; }
 .member-controls input { min-height: 40px; }
@@ -171,9 +171,16 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 .report-nav { margin-bottom: 14px; }
 .report-filters { display: grid; grid-template-columns: 1fr 180px 1fr; gap: 14px; }
 .report-filters label { margin: 0; }
+.report-subtabs { display: inline-flex; gap: 8px; margin: 0 0 16px; padding: 6px; border-radius: 14px; background: #dfe7f0; }
+.report-subtab { min-height: 40px; padding: 8px 16px; border-radius: 9px; background: transparent; color: var(--navy); }
+.report-subtab.active { background: white; box-shadow: 0 4px 12px rgba(15, 42, 76, .12); }
+.report-subpanel > .card:first-child { margin-top: 0; }
 .report-person-filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .report-person-filters label { margin: 0; }
 .person-summary { display: grid; gap: 4px; margin-top: 18px; }
+.member-detail-dialog { width: min(960px, calc(100vw - 32px)); border: 0; border-radius: 18px; padding: 24px; box-shadow: 0 24px 60px rgba(15, 42, 76, .24); }
+.member-detail-dialog::backdrop { background: rgba(11, 43, 82, .45); }
+.dialog-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .table-wrap { margin-top: 18px; overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; background: white; }
 th, td { padding: 12px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
@@ -204,6 +211,8 @@ th { color: var(--navy); background: #edf3f9; font-size: .85rem; }
   .search-input { width: 100%; }
   .member-filters { display: grid; grid-template-columns: 1fr; }
   .member-filters select { width: 100%; }
+  .report-subtabs { display: grid; grid-template-columns: 1fr 1fr; }
+  .dialog-header { align-items: stretch; flex-direction: column; }
   .display-header { grid-template-columns: auto 1fr; padding: 18px; }
   .display-header img { width: 68px; height: 68px; border-radius: 14px; }
   .display-header .updated-at { grid-column: 1 / -1; }

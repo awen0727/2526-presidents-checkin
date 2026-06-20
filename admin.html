@@ -8,10 +8,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260620-admin2">
+  <link rel="stylesheet" href="styles.css?v=20260620-admin3">
   <script src="config.js?v=20260620-2"></script>
   <script src="common.js?v=20260620-1" defer></script>
-  <script src="admin.js?v=20260620-admin2" defer></script>
+  <script src="admin.js?v=20260620-admin3" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -80,7 +80,7 @@
         <section class="card">
           <div class="section-heading">
             <div><h2>本場簽到名單</h2><p class="muted">LINE 與管理者代簽會標示不同來源。</p></div>
-            <button id="exportAttendanceButton" class="secondary small-button" type="button">匯出 CSV</button>
+            <button id="exportAttendanceButton" class="secondary small-button" type="button">匯出 Excel</button>
           </div>
           <div id="noAttendance" class="empty-state">目前尚無簽到紀錄。</div>
           <div id="attendanceList" class="manage-list"></div>
@@ -183,9 +183,17 @@
           <article class="stat-card"><span>平均每場</span><strong id="reportAverage">0</strong></article>
         </section>
 
-        <section class="card">
+        <nav class="report-subtabs" aria-label="出席查詢子功能">
+          <button class="report-subtab active" data-report-view="recent" type="button">最近活動</button>
+          <button class="report-subtab" data-report-view="member" type="button">個人／年度</button>
+        </nav>
+
+        <section id="reportRecentPanel" class="card report-subpanel">
           <div class="section-heading">
-            <div><h2 id="reportSelectedEventName">單場出席狀態</h2><p id="reportSelectedEventMeta" class="muted"></p></div>
+            <div>
+              <h2 id="reportSelectedEventName">單場出席狀態</h2>
+              <p id="reportSelectedEventMeta" class="muted"></p>
+            </div>
             <span id="reportSelectedEventBadge" class="badge"></span>
           </div>
           <div class="table-wrap">
@@ -196,42 +204,60 @@
           </div>
         </section>
 
-        <section class="card">
-          <div class="section-heading">
-            <div>
-              <h2>個人出席日期查詢</h2>
-              <p class="muted">依序選擇專區、分區、會名後，即可查看該會長的出席日期明細。</p>
+        <section id="reportMemberPanel" class="report-subpanel hidden">
+          <section class="card">
+            <div class="section-heading">
+              <div>
+                <h2>個人出席日期查詢</h2>
+                <p class="muted">可直接挑選專區、分區、會名，查詢該位會長所有活動的出席日期。</p>
+              </div>
             </div>
-          </div>
-          <div class="report-person-filters">
-            <label>專區<select id="reportZoneFilter"><option value="">請選擇專區</option></select></label>
-            <label>分區<select id="reportDivisionFilter" disabled><option value="">請先選專區</option></select></label>
-            <label>會名<select id="reportClubFilter" disabled><option value="">請先選分區</option></select></label>
-          </div>
-          <div id="reportPersonSummary" class="person-summary hidden">
-            <strong id="reportDetailName">出席明細</strong>
-            <span id="reportPersonStats" class="muted"></span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>日期</th><th>活動</th><th>狀態</th><th>簽到時間</th><th>來源</th></tr></thead>
-              <tbody id="reportDetailRows"></tbody>
-            </table>
-          </div>
-        </section>
+            <div class="report-person-filters">
+              <label>專區<select id="reportZoneFilter"><option value="">全部專區</option></select></label>
+              <label>分區<select id="reportDivisionFilter"><option value="">全部分區</option></select></label>
+              <label>會名<select id="reportClubFilter"><option value="">全部會名</option></select></label>
+            </div>
+            <div id="reportPersonSummary" class="person-summary hidden">
+              <strong id="reportDetailName">出席明細</strong>
+              <span id="reportPersonStats" class="muted"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>日期</th><th>活動</th><th>狀態</th><th>簽到時間</th><th>來源</th></tr></thead>
+                <tbody id="reportDetailRows"></tbody>
+              </table>
+            </div>
+          </section>
 
-        <section class="card">
-          <h2>年度出席統計</h2>
-          <p class="muted">點選會長姓名可直接帶出個人出席日期查詢。</p>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>會長</th><th>分會</th><th>出席</th><th>未出席</th><th>出席率</th></tr></thead>
-              <tbody id="reportSummaryRows"></tbody>
-            </table>
-          </div>
+          <section class="card">
+            <h2>年度出席統計</h2>
+            <p class="muted">點選會長姓名可直接打開個人出席日期明細。</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>會長</th><th>分會</th><th>出席</th><th>未出席</th><th>出席率</th></tr></thead>
+                <tbody id="reportSummaryRows"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </div>
     </div>
   </main>
+
+  <dialog id="memberDetailDialog" class="member-detail-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2 id="memberDetailTitle">個人出席明細</h2>
+        <p id="memberDetailStats" class="muted"></p>
+      </div>
+      <button id="memberDetailClose" class="secondary small-button" type="button">關閉</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>日期</th><th>活動</th><th>狀態</th><th>簽到時間</th><th>來源</th></tr></thead>
+        <tbody id="memberDetailRows"></tbody>
+      </table>
+    </div>
+  </dialog>
 </body>
 </html>

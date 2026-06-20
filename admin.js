@@ -6,6 +6,7 @@
   const loginMessage = document.getElementById("loginMessage");
   const adminMessage = document.getElementById("adminMessage");
   const reportMessage = document.getElementById("reportMessage");
+  const memberDetailDialog = document.getElementById("memberDetailDialog");
   let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0 };
   let report = {
     events: [],
@@ -43,6 +44,12 @@
     button.type = "button";
     button.addEventListener("click", handler);
     return button;
+  }
+
+  function showReportView(view) {
+    document.querySelectorAll(".report-subtab").forEach(tab => tab.classList.toggle("active", tab.dataset.reportView === view));
+    document.getElementById("reportRecentPanel").classList.toggle("hidden", view !== "recent");
+    document.getElementById("reportMemberPanel").classList.toggle("hidden", view !== "member");
   }
 
   function unique(values) {
@@ -232,17 +239,12 @@
     fillSelect(zoneSelect, zones, "全部專區", false);
     zoneSelect.value = zones.includes(selectedZone) ? selectedZone : "";
 
-    const divisions = unique(state.members
-      .filter(member => !zoneSelect.value || member.zone === zoneSelect.value)
-      .map(member => member.division));
-    fillSelect(divisionSelect, divisions, zoneSelect.value ? "全部分區" : "請先選專區", !zoneSelect.value);
+    const divisions = unique(state.members.map(member => member.division));
+    fillSelect(divisionSelect, divisions, "全部分區", false);
     divisionSelect.value = divisions.includes(selectedDivision) ? selectedDivision : "";
 
-    const clubs = unique(state.members
-      .filter(member => (!zoneSelect.value || member.zone === zoneSelect.value)
-        && (!divisionSelect.value || member.division === divisionSelect.value))
-      .map(member => member.club));
-    fillSelect(clubSelect, clubs, divisionSelect.value ? "全部會名" : "請先選分區", !divisionSelect.value);
+    const clubs = unique(state.members.map(member => member.club));
+    fillSelect(clubSelect, clubs, "全部會名", false);
     clubSelect.value = clubs.includes(selectedClub) ? selectedClub : "";
   }
 
@@ -413,20 +415,15 @@
     const selectedDivision = divisionSelect.value;
     const selectedClub = clubSelect.value;
     const zones = unique(report.members.map(member => member.zone));
-    fillSelect(zoneSelect, zones, "請選擇專區", false);
+    fillSelect(zoneSelect, zones, "全部專區", false);
     zoneSelect.value = zones.includes(selectedZone) ? selectedZone : "";
 
-    const divisions = unique(report.members
-      .filter(member => !zoneSelect.value || member.zone === zoneSelect.value)
-      .map(member => member.division));
-    fillSelect(divisionSelect, divisions, zoneSelect.value ? "請選擇分區" : "請先選專區", !zoneSelect.value);
+    const divisions = unique(report.members.map(member => member.division));
+    fillSelect(divisionSelect, divisions, "全部分區", false);
     divisionSelect.value = divisions.includes(selectedDivision) ? selectedDivision : "";
 
-    const clubs = unique(report.members
-      .filter(member => (!zoneSelect.value || member.zone === zoneSelect.value)
-        && (!divisionSelect.value || member.division === divisionSelect.value))
-      .map(member => member.club));
-    fillSelect(clubSelect, clubs, divisionSelect.value ? "請選擇會名" : "請先選分區", !divisionSelect.value);
+    const clubs = unique(report.members.map(member => member.club));
+    fillSelect(clubSelect, clubs, "全部會名", false);
     clubSelect.value = clubs.includes(selectedClub) ? selectedClub : "";
   }
 
@@ -452,6 +449,36 @@
     summary.classList.remove("hidden");
   }
 
+  function filteredReportMembers() {
+    const zone = document.getElementById("reportZoneFilter").value;
+    const division = document.getElementById("reportDivisionFilter").value;
+    const club = document.getElementById("reportClubFilter").value;
+    return report.members.filter(member => {
+      if (zone && member.zone !== zone) return false;
+      if (division && member.division !== division) return false;
+      if (club && member.club !== club) return false;
+      return true;
+    });
+  }
+
+  function openMemberDetail(member) {
+    document.getElementById("memberDetailTitle").textContent = `${member.club}｜${member.name || "姓名待補"} 出席明細`;
+    document.getElementById("memberDetailStats").textContent = `出席 ${member.attended_count} 場，未出席 ${member.absent_count} 場，出席率 ${member.attendance_rate}%`;
+    const rows = document.getElementById("memberDetailRows");
+    rows.replaceChildren();
+    member.records.forEach(record => {
+      const row = document.createElement("tr");
+      addCell(row, record.event_date);
+      addCell(row, record.event_name);
+      addCell(row, record.attended ? "已出席" : "未出席", record.attended ? "attendance-yes" : "attendance-no");
+      addCell(row, formatDateTime(record.checkin_at));
+      addCell(row, record.source || "");
+      rows.appendChild(row);
+    });
+    if (typeof memberDetailDialog.showModal === "function") memberDetailDialog.showModal();
+    else memberDetailDialog.setAttribute("open", "open");
+  }
+
   function renderSummary() {
     const rows = document.getElementById("reportSummaryRows");
     rows.replaceChildren();
@@ -463,12 +490,14 @@
       button.className = "table-link-button";
       button.textContent = member.name || "姓名待補";
       button.addEventListener("click", () => {
+        showReportView("member");
         document.getElementById("reportZoneFilter").value = member.zone;
         fillPersonFilters();
         document.getElementById("reportDivisionFilter").value = member.division;
         fillPersonFilters();
         document.getElementById("reportClubFilter").value = member.club;
         renderPersonRecords(member);
+        openMemberDetail(member);
       });
       nameCell.appendChild(button);
       row.appendChild(nameCell);
@@ -482,13 +511,8 @@
 
   function renderSelectedPerson() {
     fillPersonFilters();
-    const zone = document.getElementById("reportZoneFilter").value;
-    const division = document.getElementById("reportDivisionFilter").value;
-    const club = document.getElementById("reportClubFilter").value;
-    const member = report.members.find(item =>
-      item.zone === zone && item.division === division && item.club === club
-    );
-    renderPersonRecords(member || null);
+    const candidates = filteredReportMembers();
+    renderPersonRecords(candidates.length === 1 ? candidates[0] : null);
   }
 
   async function loadReport(eventId) {
@@ -523,17 +547,29 @@
   function exportAttendance() {
     const event = state.currentEvent;
     if (!event || !state.attendance.length) return;
-    const escape = value => `"${String(value || "").replace(/"/g, '""')}"`;
+    const escapeXml = value => String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;");
     const rows = [
       ["活動日期", "活動名稱", "分會", "姓名", "簽到時間", "來源"],
       ...state.attendance.map(record => [
         event.event_date, event.name, record.club, record.name, formatDateTime(record.checkin_at), record.source
       ])
     ];
-    const blob = new Blob(["\ufeff" + rows.map(row => row.map(escape).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+    const xml = [
+      "<?xml version=\"1.0\"?>",
+      "<?mso-application progid=\"Excel.Sheet\"?>",
+      "<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">",
+      "<Worksheet ss:Name=\"簽到名單\"><Table>",
+      ...rows.map(row => `<Row>${row.map(cell => `<Cell><Data ss:Type=\"String\">${escapeXml(cell)}</Data></Cell>`).join("")}</Row>`),
+      "</Table></Worksheet></Workbook>"
+    ].join("");
+    const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${event.event_date}-${event.name}-簽到名單.csv`;
+    link.download = `${event.event_date}-${event.name}-簽到名單.xls`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
@@ -544,6 +580,9 @@
       document.querySelectorAll(".admin-tab-panel").forEach(panel => panel.classList.add("hidden"));
       document.getElementById(`${button.dataset.tab}Tab`).classList.remove("hidden");
     });
+  });
+  document.querySelectorAll(".report-subtab").forEach(button => {
+    button.addEventListener("click", () => showReportView(button.dataset.reportView));
   });
 
   document.getElementById("loginButton").addEventListener("click", () => {
@@ -581,31 +620,21 @@
   document.getElementById("exportAttendanceButton").addEventListener("click", exportAttendance);
   document.getElementById("memberSearch").addEventListener("input", renderMembers);
   document.getElementById("participationFilter").addEventListener("change", renderMembers);
-  document.getElementById("memberZoneFilter").addEventListener("change", () => {
-    document.getElementById("memberDivisionFilter").value = "";
-    document.getElementById("memberClubFilter").value = "";
-    renderMembers();
-  });
-  document.getElementById("memberDivisionFilter").addEventListener("change", () => {
-    document.getElementById("memberClubFilter").value = "";
-    renderMembers();
-  });
+  document.getElementById("memberZoneFilter").addEventListener("change", renderMembers);
+  document.getElementById("memberDivisionFilter").addEventListener("change", renderMembers);
   document.getElementById("memberClubFilter").addEventListener("change", renderMembers);
   document.getElementById("reportEventFilter").addEventListener("change", event => {
     loadReport(event.target.value).catch(error => showMessage(reportMessage, error.message, "error"));
   });
   document.getElementById("reportStatusFilter").addEventListener("change", renderEvent);
   document.getElementById("reportMemberSearch").addEventListener("input", renderEvent);
-  document.getElementById("reportZoneFilter").addEventListener("change", () => {
-    document.getElementById("reportDivisionFilter").value = "";
-    document.getElementById("reportClubFilter").value = "";
-    renderSelectedPerson();
-  });
-  document.getElementById("reportDivisionFilter").addEventListener("change", () => {
-    document.getElementById("reportClubFilter").value = "";
-    renderSelectedPerson();
-  });
+  document.getElementById("reportZoneFilter").addEventListener("change", renderSelectedPerson);
+  document.getElementById("reportDivisionFilter").addEventListener("change", renderSelectedPerson);
   document.getElementById("reportClubFilter").addEventListener("change", renderSelectedPerson);
+  document.getElementById("memberDetailClose").addEventListener("click", () => {
+    if (typeof memberDetailDialog.close === "function") memberDetailDialog.close();
+    else memberDetailDialog.removeAttribute("open");
+  });
 
   const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
     && new URLSearchParams(location.search).get("preview") === "1";
@@ -663,6 +692,7 @@
     renderSummary();
     renderSelectedPerson();
     renderDashboard();
+    showReportView("recent");
     document.getElementById("loginPanel").classList.add("hidden");
     document.getElementById("adminApp").classList.remove("hidden");
   }

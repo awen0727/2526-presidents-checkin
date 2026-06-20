@@ -6,7 +6,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-20-attendance-4";
+const API_VERSION = "2526-presidents-2026-06-20-attendance-5";
 
 function doGet(e) {
   try {
@@ -192,7 +192,7 @@ function checkIn_(payload) {
 function adminOverview_() {
   const members = rows_(SHEETS.MEMBERS);
   const events = rows_(SHEETS.EVENTS);
-  const openEvent = events.find(event => event.status === "open") || null;
+  const openEvent = getOpenEvent_();
   const attendance = openEvent
     ? findRows_(SHEETS.ATTENDANCE, row => row.event_id === openEvent.event_id)
     : [];
@@ -389,7 +389,7 @@ function adminSetParticipation_(payload) {
 
 function adminAttendanceReport_(payload) {
   const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
-  const events = rows_(SHEETS.EVENTS);
+  const events = rows_(SHEETS.EVENTS).sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
   const allAttendance = rows_(SHEETS.ATTENDANCE);
   const requestedEventId = String(payload.eventId || "");
   const selectedEvent = events.find(event => event.event_id === requestedEventId)
@@ -465,6 +465,14 @@ function closeOpenEvents_() {
   });
 }
 
+function expireStaleOpenEvents_() {
+  const today = today_();
+  findRows_(SHEETS.EVENTS, row => row.status === "open" && String(row.event_date || "") < today).forEach(event => {
+    updateRow_(SHEETS.EVENTS, event._row, { status: "closed" });
+    audit_("event_auto_closed", "system", event.event_id, `expired on ${today}`);
+  });
+}
+
 function verifyLineIdentity_(payload) {
   const idToken = String((payload && payload.idToken) || "").trim();
   const accessToken = String((payload && payload.accessToken) || "").trim();
@@ -536,7 +544,9 @@ function publicEvent_(event) {
 }
 
 function getOpenEvent_() {
-  return findRows_(SHEETS.EVENTS, row => row.status === "open")[0] || null;
+  expireStaleOpenEvents_();
+  const today = today_();
+  return findRows_(SHEETS.EVENTS, row => row.status === "open" && row.event_date === today)[0] || null;
 }
 
 function maskPhone_(value) {
@@ -620,6 +630,10 @@ function id_(prefix) {
 
 function now_() {
   return new Date().toISOString();
+}
+
+function today_() {
+  return Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
 }
 
 function json_(payload) {
