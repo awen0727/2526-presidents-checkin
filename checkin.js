@@ -5,7 +5,12 @@
   const statusMessage = document.getElementById("statusMessage");
   const panels = ["bindingPanel", "pendingPanel", "checkinPanel", "successPanel"];
   let idToken = "";
+  let accessToken = "";
   let members = [];
+
+  function linePayload(action, extra) {
+    return { action, idToken, accessToken, ...extra };
+  }
 
   function showPanel(id) {
     panels.forEach(panelId => document.getElementById(panelId).classList.toggle("hidden", panelId !== id));
@@ -59,8 +64,17 @@
   }
 
   async function loadSession() {
-    const session = await post({ action: "getSession", idToken });
-    renderSession(session);
+    try {
+      const session = await post(linePayload("getSession"));
+      renderSession(session);
+    } catch (error) {
+      if (String(error.message || "").includes("LINE 登入憑證無效或已過期") && liff.isLoggedIn()) {
+        liff.logout();
+        liff.login({ redirectUri: window.location.href });
+        return;
+      }
+      throw error;
+    }
   }
 
   document.getElementById("zoneSelect").addEventListener("change", event => {
@@ -74,7 +88,7 @@
     const choices = members.filter(member => member.zone === zone && member.division === event.target.value);
     const select = document.getElementById("memberSelect");
     select.replaceChildren(new Option("請選擇分會與會長", ""));
-    choices.forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}`, member.id)));
+    choices.forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}`, member.member_id)));
     select.disabled = choices.length === 0;
   });
 
@@ -89,7 +103,7 @@
     if (!/^\d{4}$/.test(phoneLast4)) return showMessage(statusMessage, "請輸入手機末四碼", "error");
     event.currentTarget.disabled = true;
     try {
-      const result = await post({ action: "requestBinding", idToken, memberId, phoneLast4 });
+      const result = await post(linePayload("requestBinding", { memberId, phoneLast4 }));
       if (result.status === "approved") await loadSession();
       else renderSession({ member: null, bindingPending: true });
     } catch (error) {
@@ -106,7 +120,7 @@
   document.getElementById("checkinButton").addEventListener("click", async event => {
     event.currentTarget.disabled = true;
     try {
-      const result = await post({ action: "checkIn", idToken });
+      const result = await post(linePayload("checkIn"));
       document.getElementById("successText").textContent = result.message;
       showPanel("successPanel");
       showMessage(statusMessage, "已寫入簽到紀錄", "success");
@@ -130,7 +144,8 @@
     await liff.init({ liffId: config.liffId });
     if (!liff.isLoggedIn()) return liff.login({ redirectUri: window.location.href });
     idToken = liff.getIDToken();
-    if (!idToken) throw new Error("無法取得 LINE 登入憑證，請確認 LIFF 已啟用 openid 權限");
+    accessToken = liff.getAccessToken() || "";
+    if (!idToken && !accessToken) throw new Error("無法取得 LINE 登入憑證，請確認 LIFF 已啟用 openid 權限");
     const profile = await liff.getProfile();
     document.getElementById("lineName").textContent = profile.displayName || "LINE 使用者";
     if (profile.pictureUrl) {

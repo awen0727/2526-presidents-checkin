@@ -5,7 +5,16 @@
   const tokenInput = document.getElementById("adminToken");
   const loginMessage = document.getElementById("loginMessage");
   const adminMessage = document.getElementById("adminMessage");
+  const reportMessage = document.getElementById("reportMessage");
   let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0 };
+  let report = {
+    events: [],
+    selectedEvent: null,
+    selectedEventMembers: [],
+    members: [],
+    summary: { event_count: 0, member_count: 0, attendance_count: 0, average_attendance: 0 }
+  };
+
   tokenInput.value = sessionStorage.getItem("presidentsAdminToken") || "";
 
   const today = new Date();
@@ -36,6 +45,16 @@
     return button;
   }
 
+  function unique(values) {
+    return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  }
+
+  function fillSelect(select, values, placeholder, disabled) {
+    select.replaceChildren(new Option(placeholder, ""));
+    values.forEach(value => select.appendChild(new Option(value, value)));
+    select.disabled = Boolean(disabled || values.length === 0);
+  }
+
   function formatDateTime(value) {
     if (!value) return "";
     const date = new Date(value);
@@ -44,6 +63,17 @@
       timeZone: "Asia/Taipei",
       month: "2-digit",
       day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date);
+  }
+
+  function formatTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
       hour: "2-digit",
       minute: "2-digit"
     }).format(date);
@@ -191,17 +221,53 @@
     document.getElementById("noRequests").classList.toggle("hidden", state.requests.length > 0);
   }
 
-  function renderMembers() {
+  function buildMemberFilters() {
+    const zoneSelect = document.getElementById("memberZoneFilter");
+    const divisionSelect = document.getElementById("memberDivisionFilter");
+    const clubSelect = document.getElementById("memberClubFilter");
+    const selectedZone = zoneSelect.value;
+    const selectedDivision = divisionSelect.value;
+    const selectedClub = clubSelect.value;
+    const zones = unique(state.members.map(member => member.zone));
+    fillSelect(zoneSelect, zones, "全部專區", false);
+    zoneSelect.value = zones.includes(selectedZone) ? selectedZone : "";
+
+    const divisions = unique(state.members
+      .filter(member => !zoneSelect.value || member.zone === zoneSelect.value)
+      .map(member => member.division));
+    fillSelect(divisionSelect, divisions, zoneSelect.value ? "全部分區" : "請先選專區", !zoneSelect.value);
+    divisionSelect.value = divisions.includes(selectedDivision) ? selectedDivision : "";
+
+    const clubs = unique(state.members
+      .filter(member => (!zoneSelect.value || member.zone === zoneSelect.value)
+        && (!divisionSelect.value || member.division === divisionSelect.value))
+      .map(member => member.club));
+    fillSelect(clubSelect, clubs, divisionSelect.value ? "全部會名" : "請先選分區", !divisionSelect.value);
+    clubSelect.value = clubs.includes(selectedClub) ? selectedClub : "";
+  }
+
+  function filteredMembers() {
     const query = document.getElementById("memberSearch").value.trim().toLowerCase();
     const participation = document.getElementById("participationFilter").value;
-    const list = document.getElementById("memberList");
-    list.replaceChildren();
-    state.members.filter(member => {
+    const zone = document.getElementById("memberZoneFilter").value;
+    const division = document.getElementById("memberDivisionFilter").value;
+    const club = document.getElementById("memberClubFilter").value;
+    return state.members.filter(member => {
       const text = [member.zone, member.division, member.club, member.name].join(" ").toLowerCase();
       if (participation === "participating" && !member.participating) return false;
       if (participation === "not_participating" && member.participating) return false;
+      if (zone && member.zone !== zone) return false;
+      if (division && member.division !== division) return false;
+      if (club && member.club !== club) return false;
       return !query || text.includes(query);
-    }).forEach(member => {
+    });
+  }
+
+  function renderMembers() {
+    buildMemberFilters();
+    const list = document.getElementById("memberList");
+    list.replaceChildren();
+    filteredMembers().forEach(member => {
       const card = makeElement("article", "member-admin-card");
       const heading = makeElement("div", "review-heading");
       const info = makeElement("div", "manage-card-info");
@@ -243,6 +309,199 @@
     });
   }
 
+  function personCard(person, index) {
+    const card = document.createElement("article");
+    card.className = "attendance-person-card";
+    const order = document.createElement("span");
+    order.className = "arrival-order";
+    order.textContent = String(index + 1);
+    const detail = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = person.name || "姓名待補";
+    const meta = document.createElement("span");
+    meta.textContent = `${person.club}會 · ${formatTime(person.checkin_at)}`;
+    detail.append(name, meta);
+    card.append(order, detail);
+    return card;
+  }
+
+  function renderDashboard() {
+    const event = report.selectedEvent || state.currentEvent;
+    const people = (report.selectedEventMembers || []).filter(member => member.attended)
+      .sort((a, b) => String(a.checkin_at).localeCompare(String(b.checkin_at)));
+    const totalCount = report.summary.member_count || state.memberCount || 0;
+    const attendedCount = people.length;
+    const absentCount = Math.max(0, totalCount - attendedCount);
+    const attendanceRate = totalCount ? Math.round(attendedCount / totalCount * 1000) / 10 : 0;
+
+    document.getElementById("dashboardEventName").textContent = event
+      ? event.name
+      : "目前沒有開放簽到的活動";
+    document.getElementById("dashboardEventMeta").textContent = event
+      ? event.event_date
+      : "開放活動後，此區會自動顯示即時出席狀況。";
+    document.getElementById("dashboardTotal").textContent = totalCount;
+    document.getElementById("dashboardAttended").textContent = attendedCount;
+    document.getElementById("dashboardAbsent").textContent = absentCount;
+    document.getElementById("dashboardRate").textContent = attendanceRate;
+    document.getElementById("dashboardProgressBar").style.width = `${Math.min(100, attendanceRate)}%`;
+    document.getElementById("dashboardUpdatedAt").textContent = `更新 ${formatTime(new Date().toISOString())}`;
+    document.getElementById("dashboardPeople").replaceChildren(...people.map(personCard));
+    document.getElementById("dashboardEmpty").classList.toggle("hidden", people.length > 0);
+    showMessage(document.getElementById("dashboardMessage"), "", "");
+  }
+
+  function fillEvents() {
+    const select = document.getElementById("reportEventFilter");
+    select.replaceChildren();
+    if (!report.events.length) select.appendChild(new Option("尚無活動", ""));
+    report.events.forEach(event => select.appendChild(new Option(
+      `${event.event_date}｜${event.name}`,
+      event.event_id,
+      false,
+      Boolean(report.selectedEvent && event.event_id === report.selectedEvent.event_id)
+    )));
+  }
+
+  function renderStats() {
+    document.getElementById("reportEventCount").textContent = report.summary.event_count;
+    document.getElementById("reportMemberCount").textContent = report.summary.member_count;
+    document.getElementById("reportAttendanceCount").textContent = report.summary.attendance_count;
+    document.getElementById("reportAverage").textContent = report.summary.average_attendance;
+  }
+
+  function addCell(row, text, className) {
+    const cell = document.createElement("td");
+    cell.textContent = text == null ? "" : String(text);
+    if (className) cell.className = className;
+    row.appendChild(cell);
+  }
+
+  function renderEvent() {
+    const event = report.selectedEvent;
+    const query = document.getElementById("reportMemberSearch").value.trim().toLowerCase();
+    const status = document.getElementById("reportStatusFilter").value;
+    document.getElementById("reportSelectedEventName").textContent = event ? event.name : "尚無活動";
+    document.getElementById("reportSelectedEventMeta").textContent = event ? event.event_date : "";
+    const attended = report.selectedEventMembers.filter(member => member.attended).length;
+    document.getElementById("reportSelectedEventBadge").textContent = event ? `已出席 ${attended}／${report.selectedEventMembers.length}` : "";
+    const rows = document.getElementById("reportEventRows");
+    rows.replaceChildren();
+    report.selectedEventMembers.filter(member => {
+      const text = [member.zone, member.division, member.club, member.name].join(" ").toLowerCase();
+      if (query && !text.includes(query)) return false;
+      if (status === "attended" && !member.attended) return false;
+      if (status === "absent" && member.attended) return false;
+      return true;
+    }).forEach(member => {
+      const row = document.createElement("tr");
+      addCell(row, member.attended ? "已出席" : "未出席", member.attended ? "attendance-yes" : "attendance-no");
+      addCell(row, `${member.zone}／${member.division}`);
+      addCell(row, member.club);
+      addCell(row, member.name || "姓名待補");
+      addCell(row, formatDateTime(member.checkin_at));
+      addCell(row, member.source || "");
+      rows.appendChild(row);
+    });
+  }
+
+  function fillPersonFilters() {
+    const zoneSelect = document.getElementById("reportZoneFilter");
+    const divisionSelect = document.getElementById("reportDivisionFilter");
+    const clubSelect = document.getElementById("reportClubFilter");
+    const selectedZone = zoneSelect.value;
+    const selectedDivision = divisionSelect.value;
+    const selectedClub = clubSelect.value;
+    const zones = unique(report.members.map(member => member.zone));
+    fillSelect(zoneSelect, zones, "請選擇專區", false);
+    zoneSelect.value = zones.includes(selectedZone) ? selectedZone : "";
+
+    const divisions = unique(report.members
+      .filter(member => !zoneSelect.value || member.zone === zoneSelect.value)
+      .map(member => member.division));
+    fillSelect(divisionSelect, divisions, zoneSelect.value ? "請選擇分區" : "請先選專區", !zoneSelect.value);
+    divisionSelect.value = divisions.includes(selectedDivision) ? selectedDivision : "";
+
+    const clubs = unique(report.members
+      .filter(member => (!zoneSelect.value || member.zone === zoneSelect.value)
+        && (!divisionSelect.value || member.division === divisionSelect.value))
+      .map(member => member.club));
+    fillSelect(clubSelect, clubs, divisionSelect.value ? "請選擇會名" : "請先選分區", !divisionSelect.value);
+    clubSelect.value = clubs.includes(selectedClub) ? selectedClub : "";
+  }
+
+  function renderPersonRecords(member) {
+    const summary = document.getElementById("reportPersonSummary");
+    const rows = document.getElementById("reportDetailRows");
+    rows.replaceChildren();
+    if (!member) {
+      summary.classList.add("hidden");
+      return;
+    }
+    document.getElementById("reportDetailName").textContent = `${member.club}｜${member.name || "姓名待補"} 出席日期`;
+    document.getElementById("reportPersonStats").textContent = `出席 ${member.attended_count} 場，未出席 ${member.absent_count} 場，出席率 ${member.attendance_rate}%`;
+    member.records.forEach(record => {
+      const row = document.createElement("tr");
+      addCell(row, record.event_date);
+      addCell(row, record.event_name);
+      addCell(row, record.attended ? "已出席" : "未出席", record.attended ? "attendance-yes" : "attendance-no");
+      addCell(row, formatDateTime(record.checkin_at));
+      addCell(row, record.source || "");
+      rows.appendChild(row);
+    });
+    summary.classList.remove("hidden");
+  }
+
+  function renderSummary() {
+    const rows = document.getElementById("reportSummaryRows");
+    rows.replaceChildren();
+    report.members.forEach(member => {
+      const row = document.createElement("tr");
+      const nameCell = document.createElement("td");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "table-link-button";
+      button.textContent = member.name || "姓名待補";
+      button.addEventListener("click", () => {
+        document.getElementById("reportZoneFilter").value = member.zone;
+        fillPersonFilters();
+        document.getElementById("reportDivisionFilter").value = member.division;
+        fillPersonFilters();
+        document.getElementById("reportClubFilter").value = member.club;
+        renderPersonRecords(member);
+      });
+      nameCell.appendChild(button);
+      row.appendChild(nameCell);
+      addCell(row, member.club);
+      addCell(row, member.attended_count);
+      addCell(row, member.absent_count);
+      addCell(row, `${member.attendance_rate}%`, member.attendance_rate < 50 ? "rate-low" : "rate-good");
+      rows.appendChild(row);
+    });
+  }
+
+  function renderSelectedPerson() {
+    fillPersonFilters();
+    const zone = document.getElementById("reportZoneFilter").value;
+    const division = document.getElementById("reportDivisionFilter").value;
+    const club = document.getElementById("reportClubFilter").value;
+    const member = report.members.find(item =>
+      item.zone === zone && item.division === division && item.club === club
+    );
+    renderPersonRecords(member || null);
+  }
+
+  async function loadReport(eventId) {
+    report = await post({ action: "adminAttendanceReport", adminToken: adminToken(), eventId: eventId || "" });
+    fillEvents();
+    renderStats();
+    renderEvent();
+    renderSummary();
+    renderSelectedPerson();
+    renderDashboard();
+    showMessage(reportMessage, "", "");
+  }
+
   function render() {
     renderOverview();
     renderManualMembers();
@@ -255,6 +514,7 @@
   async function load() {
     state = await post({ action: "adminOverview", adminToken: adminToken() });
     render();
+    await loadReport(document.getElementById("reportEventFilter").value);
     document.getElementById("loginPanel").classList.add("hidden");
     document.getElementById("adminApp").classList.remove("hidden");
     showMessage(loginMessage, "", "");
@@ -321,6 +581,31 @@
   document.getElementById("exportAttendanceButton").addEventListener("click", exportAttendance);
   document.getElementById("memberSearch").addEventListener("input", renderMembers);
   document.getElementById("participationFilter").addEventListener("change", renderMembers);
+  document.getElementById("memberZoneFilter").addEventListener("change", () => {
+    document.getElementById("memberDivisionFilter").value = "";
+    document.getElementById("memberClubFilter").value = "";
+    renderMembers();
+  });
+  document.getElementById("memberDivisionFilter").addEventListener("change", () => {
+    document.getElementById("memberClubFilter").value = "";
+    renderMembers();
+  });
+  document.getElementById("memberClubFilter").addEventListener("change", renderMembers);
+  document.getElementById("reportEventFilter").addEventListener("change", event => {
+    loadReport(event.target.value).catch(error => showMessage(reportMessage, error.message, "error"));
+  });
+  document.getElementById("reportStatusFilter").addEventListener("change", renderEvent);
+  document.getElementById("reportMemberSearch").addEventListener("input", renderEvent);
+  document.getElementById("reportZoneFilter").addEventListener("change", () => {
+    document.getElementById("reportDivisionFilter").value = "";
+    document.getElementById("reportClubFilter").value = "";
+    renderSelectedPerson();
+  });
+  document.getElementById("reportDivisionFilter").addEventListener("change", () => {
+    document.getElementById("reportClubFilter").value = "";
+    renderSelectedPerson();
+  });
+  document.getElementById("reportClubFilter").addEventListener("change", renderSelectedPerson);
 
   const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
     && new URLSearchParams(location.search).get("preview") === "1";
@@ -338,7 +623,46 @@
         { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_display_name: "" }
       ]
     };
+    report = {
+      events: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" }],
+      selectedEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" },
+      selectedEventMembers: [
+        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", attended: true, checkin_at: new Date().toISOString(), source: "LINE" },
+        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", attended: false, checkin_at: "", source: "" }
+      ],
+      members: [
+        {
+          member_id: "P2526-001",
+          zone: "第一專區",
+          division: "第1分區",
+          club: "預覽",
+          name: "預覽會長",
+          attended_count: 1,
+          absent_count: 0,
+          attendance_rate: 100,
+          records: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", event_name: "系統測試", attended: true, checkin_at: new Date().toISOString(), source: "LINE" }]
+        },
+        {
+          member_id: "P2526-002",
+          zone: "第一專區",
+          division: "第1分區",
+          club: "測試",
+          name: "測試會長",
+          attended_count: 0,
+          absent_count: 1,
+          attendance_rate: 0,
+          records: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", event_name: "系統測試", attended: false, checkin_at: "", source: "" }]
+        }
+      ],
+      summary: { event_count: 1, member_count: 2, attendance_count: 1, average_attendance: 1 }
+    };
     render();
+    fillEvents();
+    renderStats();
+    renderEvent();
+    renderSummary();
+    renderSelectedPerson();
+    renderDashboard();
     document.getElementById("loginPanel").classList.add("hidden");
     document.getElementById("adminApp").classList.remove("hidden");
   }

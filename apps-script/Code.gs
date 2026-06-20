@@ -6,7 +6,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-20-attendance-3";
+const API_VERSION = "2526-presidents-2026-06-20-attendance-4";
 
 function doGet(e) {
   try {
@@ -58,7 +58,7 @@ function route_(payload) {
 }
 
 function getSession_(payload) {
-  const line = verifyLineToken_(payload.idToken);
+  const line = verifyLineIdentity_(payload);
   const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
   const participating = Boolean(member && isParticipating_(member));
   const pending = findRows_(SHEETS.BINDINGS, row => row.line_user_id === line.sub && row.status === "pending").length > 0;
@@ -116,7 +116,7 @@ function dashboard_() {
 }
 
 function requestBinding_(payload) {
-  const line = verifyLineToken_(payload.idToken);
+  const line = verifyLineIdentity_(payload);
   const memberId = cleanText_(payload.memberId, 30, "會長編號");
   const phoneLast4 = String(payload.phoneLast4 || "").replace(/\D/g, "");
   if (!/^\d{4}$/.test(phoneLast4)) throw new Error("手機末四碼格式不正確");
@@ -161,7 +161,7 @@ function requestBinding_(payload) {
 }
 
 function checkIn_(payload) {
-  const line = verifyLineToken_(payload.idToken);
+  const line = verifyLineIdentity_(payload);
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -465,6 +465,20 @@ function closeOpenEvents_() {
   });
 }
 
+function verifyLineIdentity_(payload) {
+  const idToken = String((payload && payload.idToken) || "").trim();
+  const accessToken = String((payload && payload.accessToken) || "").trim();
+  if (idToken) {
+    try {
+      return verifyLineToken_(idToken);
+    } catch (error) {
+      if (String(error && error.message) !== "LINE 登入憑證無效或已過期" || !accessToken) throw error;
+    }
+  }
+  if (accessToken) return verifyLineAccessToken_(accessToken);
+  throw new Error("LINE 登入憑證無效或已過期，請重新開啟 LINE 簽到頁面");
+}
+
 function verifyLineToken_(idToken) {
   const token = cleanText_(idToken, 3000, "LINE 登入憑證");
   const channelId = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_ID");
@@ -478,6 +492,22 @@ function verifyLineToken_(idToken) {
   const result = JSON.parse(response.getContentText());
   if (String(result.aud) !== String(channelId) || !result.sub) throw new Error("LINE 登入憑證驗證失敗");
   return result;
+}
+
+function verifyLineAccessToken_(accessToken) {
+  const token = cleanText_(accessToken, 3000, "LINE Access Token");
+  const response = UrlFetchApp.fetch("https://api.line.me/v2/profile", {
+    method: "get",
+    headers: { Authorization: `Bearer ${token}` },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) throw new Error("LINE 登入憑證無效或已過期");
+  const result = JSON.parse(response.getContentText());
+  if (!result.userId) throw new Error("LINE 登入憑證驗證失敗");
+  return {
+    sub: result.userId,
+    name: result.displayName || ""
+  };
 }
 
 function requireAdmin_(token) {
