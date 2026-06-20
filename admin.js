@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const { post, showMessage } = window.PresidentsCheckin;
+  const { post, showMessage, compareLabels } = window.PresidentsCheckin;
   const tokenInput = document.getElementById("adminToken");
   const loginMessage = document.getElementById("loginMessage");
   const adminMessage = document.getElementById("adminMessage");
@@ -53,7 +53,7 @@
   }
 
   function unique(values) {
-    return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    return [...new Set(values.filter(Boolean))].sort(compareLabels);
   }
 
   function fillSelect(select, values, placeholder, disabled) {
@@ -126,7 +126,9 @@
     select.replaceChildren(new Option("請選擇尚未簽到的會長", ""));
     state.members
       .filter(member => member.participating && !attendedIds.has(member.member_id))
-      .sort((a, b) => `${a.zone}${a.division}${a.club}`.localeCompare(`${b.zone}${b.division}${b.club}`, "zh-Hant"))
+      .sort((a, b) => compareLabels(a.zone, b.zone)
+        || compareLabels(a.division, b.division)
+        || compareLabels(a.club, b.club))
       .forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}`, member.member_id)));
     select.disabled = !state.currentEvent;
     document.getElementById("manualCheckinButton").disabled = !state.currentEvent;
@@ -482,7 +484,7 @@
   function renderSummary() {
     const rows = document.getElementById("reportSummaryRows");
     rows.replaceChildren();
-    report.members.forEach(member => {
+    filteredReportMembers().forEach(member => {
       const row = document.createElement("tr");
       const nameCell = document.createElement("td");
       const button = document.createElement("button");
@@ -496,7 +498,7 @@
         document.getElementById("reportDivisionFilter").value = member.division;
         fillPersonFilters();
         document.getElementById("reportClubFilter").value = member.club;
-        renderPersonRecords(member);
+        renderSelectedPerson();
         openMemberDetail(member);
       });
       nameCell.appendChild(button);
@@ -512,7 +514,20 @@
   function renderSelectedPerson() {
     fillPersonFilters();
     const candidates = filteredReportMembers();
-    renderPersonRecords(candidates.length === 1 ? candidates[0] : null);
+    renderSummary();
+    if (candidates.length === 1) {
+      renderPersonRecords(candidates[0]);
+      return;
+    }
+    const summary = document.getElementById("reportPersonSummary");
+    document.getElementById("reportDetailRows").replaceChildren();
+    document.getElementById("reportDetailName").textContent = candidates.length
+      ? `符合 ${candidates.length} 位會長`
+      : "查無符合條件的會長";
+    document.getElementById("reportPersonStats").textContent = candidates.length
+      ? "請繼續選擇專區、分區或會名以查看個人出席日期。"
+      : "請調整篩選條件。";
+    summary.classList.remove("hidden");
   }
 
   async function loadReport(eventId) {

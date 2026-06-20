@@ -28,5 +28,29 @@
     element.className = `message ${type || ""}`.trim();
   }
 
-  window.PresidentsCheckin = { config, post, showMessage };
+  const labelCollator = new Intl.Collator("zh-Hant", { numeric: true, sensitivity: "base" });
+
+  function chineseNumber(value) {
+    const digits = { 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    if (!value.includes("十")) return digits[value];
+    const [tens, ones] = value.split("十");
+    return (tens ? digits[tens] : 1) * 10 + (ones ? digits[ones] : 0);
+  }
+
+  function ordinalNumber(value) {
+    const text = String(value || "");
+    const arabic = text.match(/第\s*(\d+)\s*(?:專區|分區)/);
+    if (arabic) return Number(arabic[1]);
+    const chinese = text.match(/第\s*([零一二三四五六七八九十]+)\s*(?:專區|分區)/);
+    return chinese ? chineseNumber(chinese[1]) : null;
+  }
+
+  function compareLabels(a, b) {
+    const aNumber = ordinalNumber(a);
+    const bNumber = ordinalNumber(b);
+    if (aNumber != null && bNumber != null && aNumber !== bNumber) return aNumber - bNumber;
+    return labelCollator.compare(String(a || ""), String(b || ""));
+  }
+
+  window.PresidentsCheckin = { config, post, showMessage, compareLabels };
 })();

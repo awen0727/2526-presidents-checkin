@@ -1,7 +1,7 @@
 (async function () {
   "use strict";
 
-  const { config, post, showMessage } = window.PresidentsCheckin;
+  const { config, post, showMessage, compareLabels } = window.PresidentsCheckin;
   const statusMessage = document.getElementById("statusMessage");
   const panels = ["bindingPanel", "pendingPanel", "checkinPanel", "successPanel"];
   let idToken = "";
@@ -17,7 +17,7 @@
   }
 
   function unique(values) {
-    return [...new Set(values)].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    return [...new Set(values.filter(Boolean))].sort(compareLabels);
   }
 
   function fillSelect(select, values, placeholder) {
@@ -85,7 +85,9 @@
 
   document.getElementById("divisionSelect").addEventListener("change", event => {
     const zone = document.getElementById("zoneSelect").value;
-    const choices = members.filter(member => member.zone === zone && member.division === event.target.value);
+    const choices = members
+      .filter(member => member.zone === zone && member.division === event.target.value)
+      .sort((a, b) => compareLabels(a.club, b.club) || compareLabels(a.name, b.name));
     const select = document.getElementById("memberSelect");
     select.replaceChildren(new Option("請選擇分會與會長", ""));
     choices.forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}`, member.member_id)));
