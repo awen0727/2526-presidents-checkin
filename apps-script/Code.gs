@@ -6,7 +6,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-20-attendance-5";
+const API_VERSION = "2526-presidents-2026-06-20-attendance-6";
 
 function doGet(e) {
   try {
