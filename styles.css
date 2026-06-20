@@ -29,6 +29,8 @@ button, input, select { font: inherit; }
 .hero p { margin: 0; color: #dce9f7; }
 .compact-hero { padding-bottom: 70px; }
 .eyebrow { color: #f4d88d; font-size: .78rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.hero-logo { width: 108px; height: 108px; margin-bottom: 14px; border: 3px solid rgba(255, 255, 255, .82); border-radius: 22px; background: white; box-shadow: 0 10px 24px rgba(4, 20, 43, .28); object-fit: cover; }
+.compact-logo { width: 86px; height: 86px; border-radius: 18px; }
 
 .page-shell { width: min(100% - 28px, 680px); margin: -54px auto 56px; }
 .admin-shell { width: min(100% - 28px, 920px); }
@@ -133,6 +135,8 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 
 @media (max-width: 600px) {
   .hero { padding-top: 38px; }
+  .hero-logo { width: 88px; height: 88px; border-radius: 18px; }
+  .compact-logo { width: 76px; height: 76px; border-radius: 16px; }
   .card { padding: 20px; }
   .form-grid, .review-details { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
