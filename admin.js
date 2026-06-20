@@ -559,34 +559,43 @@
     showMessage(loginMessage, "", "");
   }
 
-  function exportAttendance() {
+  async function exportAttendance() {
     const event = state.currentEvent;
     if (!event || !state.attendance.length) return;
-    const escapeXml = value => String(value == null ? "" : value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;");
     const rows = [
       ["活動日期", "活動名稱", "分會", "姓名", "簽到時間", "來源"],
       ...state.attendance.map(record => [
         event.event_date, event.name, record.club, record.name, formatDateTime(record.checkin_at), record.source
       ])
     ];
-    const xml = [
-      "<?xml version=\"1.0\"?>",
-      "<?mso-application progid=\"Excel.Sheet\"?>",
-      "<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">",
-      "<Worksheet ss:Name=\"簽到名單\"><Table>",
-      ...rows.map(row => `<Row>${row.map(cell => `<Cell><Data ss:Type=\"String\">${escapeXml(cell)}</Data></Cell>`).join("")}</Row>`),
-      "</Table></Worksheet></Workbook>"
-    ].join("");
-    const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const fileName = `${event.event_date}-${event.name.replace(/[\\/:*?\"<>|]/g, "-")}-簽到名單.xlsx`;
+    const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const blob = new Blob([window.PresidentsXlsx.create(rows, "簽到名單")], { type: mimeType });
+    const file = typeof File === "function" ? new File([blob], fileName, { type: mimeType }) : null;
+    let canShareFile = false;
+    try {
+      canShareFile = Boolean(file && navigator.canShare && navigator.canShare({ files: [file] }));
+    } catch (_error) {
+      canShareFile = false;
+    }
+    if (canShareFile) {
+      try {
+        await navigator.share({ files: [file], title: fileName });
+        return;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+      }
+    }
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${event.event_date}-${event.name}-簽到名單.xls`;
+    link.download = fileName;
+    link.style.display = "none";
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    window.setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 30000);
   }
 
   document.querySelectorAll(".admin-tab").forEach(button => {
@@ -632,7 +641,9 @@
       `確定代「${select.options[select.selectedIndex].text}」完成簽到嗎？`
     ).catch(error => showMessage(adminMessage, error.message, "error"));
   });
-  document.getElementById("exportAttendanceButton").addEventListener("click", exportAttendance);
+  document.getElementById("exportAttendanceButton").addEventListener("click", () => {
+    exportAttendance().catch(error => showMessage(adminMessage, `Excel 匯出失敗：${error.message}`, "error"));
+  });
   document.getElementById("memberSearch").addEventListener("input", renderMembers);
   document.getElementById("participationFilter").addEventListener("change", renderMembers);
   document.getElementById("memberZoneFilter").addEventListener("change", renderMembers);
