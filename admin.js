@@ -52,6 +52,12 @@
     document.getElementById("reportMemberPanel").classList.toggle("hidden", view !== "member");
   }
 
+  function showAdminTab(tabName) {
+    document.querySelectorAll(".admin-tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === tabName));
+    document.querySelectorAll(".admin-tab-panel").forEach(panel => panel.classList.add("hidden"));
+    document.getElementById(`${tabName}Tab`).classList.remove("hidden");
+  }
+
   function unique(values) {
     return [...new Set(values.filter(Boolean))].sort(compareLabels);
   }
@@ -170,13 +176,18 @@
       );
       const nextStatus = event.status === "open" ? "closed" : "open";
       const label = event.status === "open" ? "關閉" : "重新開放";
-      const button = makeButton(label, "secondary compact-button", () => {
+      const actions = makeElement("div", "button-row");
+      const attendanceButton = makeButton("查看出席人員", "secondary compact-button", () => {
+        openEventAttendance(event).catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      const statusButton = makeButton(label, "secondary compact-button", () => {
         runAction(
           { action: "adminSetEventStatus", eventId: event.event_id, status: nextStatus },
           `確定${label}「${event.name}」嗎？`
         ).catch(error => showMessage(adminMessage, error.message, "error"));
       });
-      card.append(info, button);
+      actions.append(attendanceButton, statusButton);
+      card.append(info, actions);
       list.appendChild(card);
     });
   }
@@ -541,6 +552,20 @@
     showMessage(reportMessage, "", "");
   }
 
+  async function openEventAttendance(event) {
+    document.getElementById("reportStatusFilter").value = "attended";
+    document.getElementById("reportMemberSearch").value = "";
+    await loadReport(event.event_id);
+    showAdminTab("report");
+    showReportView("recent");
+    renderEvent();
+    const attendedCount = report.selectedEventMembers.filter(member => member.attended).length;
+    showMessage(reportMessage, `${event.name}：共 ${attendedCount} 位出席`, "success");
+    window.requestAnimationFrame(() => {
+      document.getElementById("reportRecentPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function render() {
     renderOverview();
     renderManualMembers();
@@ -599,11 +624,7 @@
   }
 
   document.querySelectorAll(".admin-tab").forEach(button => {
-    button.addEventListener("click", () => {
-      document.querySelectorAll(".admin-tab").forEach(tab => tab.classList.toggle("active", tab === button));
-      document.querySelectorAll(".admin-tab-panel").forEach(panel => panel.classList.add("hidden"));
-      document.getElementById(`${button.dataset.tab}Tab`).classList.remove("hidden");
-    });
+    button.addEventListener("click", () => showAdminTab(button.dataset.tab));
   });
   document.querySelectorAll(".report-subtab").forEach(button => {
     button.addEventListener("click", () => showReportView(button.dataset.reportView));
