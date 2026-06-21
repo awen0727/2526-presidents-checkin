@@ -186,7 +186,15 @@
           `確定${label}「${event.name}」嗎？`
         ).catch(error => showMessage(adminMessage, error.message, "error"));
       });
-      actions.append(attendanceButton, statusButton);
+      const deleteButton = makeButton("刪除", "danger secondary compact-button", () => {
+        runAction(
+          { action: "adminDeleteEvent", eventId: event.event_id },
+          `確定永久刪除「${event.name}」嗎？\n\n該活動的所有簽到紀錄也會一起刪除，且無法復原。`
+        ).catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      deleteButton.disabled = event.status === "open";
+      deleteButton.title = event.status === "open" ? "請先關閉活動才能刪除" : "永久刪除活動及該場簽到紀錄";
+      actions.append(attendanceButton, statusButton, deleteButton);
       card.append(info, actions);
       list.appendChild(card);
     });

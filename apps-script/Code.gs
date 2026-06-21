@@ -6,7 +6,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-20-attendance-6";
+const API_VERSION = "2526-presidents-2026-06-22-attendance-7";
 
 function doGet(e) {
   try {
@@ -42,6 +42,7 @@ function route_(payload) {
     adminRejectBinding: adminRejectBinding_,
     adminCreateEvent: adminCreateEvent_,
     adminSetEventStatus: adminSetEventStatus_,
+    adminDeleteEvent: adminDeleteEvent_,
     adminManualCheckIn: adminManualCheckIn_,
     adminRemoveAttendance: adminRemoveAttendance_,
     adminUpdateMemberPhone: adminUpdateMemberPhone_,
@@ -314,6 +315,22 @@ function adminSetEventStatus_(payload) {
   updateRow_(SHEETS.EVENTS, event._row, { status });
   audit_("event_status_changed", "admin", eventId, status);
   return { message: status === "open" ? "活動已開放簽到" : "活動已關閉" };
+}
+
+function adminDeleteEvent_(payload) {
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+  if (!event) throw new Error("找不到活動");
+  if (event.status === "open") throw new Error("請先關閉活動，再進行刪除");
+
+  const attendanceRows = findRows_(SHEETS.ATTENDANCE, row => row.event_id === eventId)
+    .map(row => row._row)
+    .sort((a, b) => b - a);
+  const attendanceSheet = sheet_(SHEETS.ATTENDANCE);
+  attendanceRows.forEach(rowNumber => attendanceSheet.deleteRow(rowNumber));
+  sheet_(SHEETS.EVENTS).deleteRow(event._row);
+  audit_("event_deleted", "admin", eventId, `${event.event_date} ${event.name}; attendance=${attendanceRows.length}`);
+  return { message: `活動已刪除，並移除 ${attendanceRows.length} 筆簽到紀錄` };
 }
 
 function adminManualCheckIn_(payload) {
