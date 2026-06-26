@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260620-admin3">
+  <link rel="stylesheet" href="styles.css?v=20260626-registration8">
   <script src="config.js?v=20260622-attendance7"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260620-xlsx1" defer></script>
-  <script src="admin.js?v=20260622-event-delete1" defer></script>
+  <script src="admin.js?v=20260626-registration8" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -101,6 +101,22 @@
           <h2>活動紀錄</h2>
           <div id="noEvents" class="empty-state">尚未建立活動。</div>
           <div id="eventList" class="manage-list"></div>
+        </section>
+        <section id="registrationReportCard" class="card hidden">
+          <div class="section-heading">
+            <div>
+              <h2 id="registrationReportTitle">活動報名名單</h2>
+              <p id="registrationReportMeta" class="muted"></p>
+            </div>
+            <span id="registrationReportBadge" class="badge"></span>
+          </div>
+          <div id="noRegistrants" class="empty-state">目前尚無人報名。</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>專區／分區</th><th>分會</th><th>會長</th><th>報名時間</th><th>來源</th></tr></thead>
+              <tbody id="registrationRows"></tbody>
+            </table>
+          </div>
         </section>
       </div>
 

@@ -26,6 +26,18 @@
     select.disabled = values.length === 0;
   }
 
+  function formatEventDate(value) {
+    if (!value) return "";
+    const date = new Date(`${value}T00:00:00+08:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short"
+    }).format(date);
+  }
+
   async function loadRoster() {
     const result = await post({ action: "getRoster" });
     members = result.members || [];
@@ -34,12 +46,6 @@
   }
 
   function renderSession(session) {
-    if (session.alreadyCheckedIn) {
-      document.getElementById("successText").textContent = `${session.member.name}，您已完成本次活動簽到。`;
-      showPanel("successPanel");
-      showMessage(statusMessage, "身分已確認", "success");
-      return;
-    }
     if (session.member) {
       document.getElementById("memberArea").textContent = `${session.member.zone} · ${session.member.division}`;
       document.getElementById("memberName").textContent = session.member.name || "姓名待補";
@@ -49,9 +55,14 @@
         : session.event
         ? `${session.event.event_date}｜${session.event.name}`
         : "目前沒有開放簽到的活動";
-      document.getElementById("checkinButton").disabled = session.participationInactive || !session.event;
+      document.getElementById("checkinButton").disabled = session.participationInactive || !session.event || session.alreadyCheckedIn;
+      document.getElementById("checkinButton").textContent = session.alreadyCheckedIn ? "本場已簽到" : "確認簽到";
+      renderRegistrationEvents(session.registrationEvents || [], Boolean(session.participationInactive));
       showPanel("checkinPanel");
-      showMessage(statusMessage, session.participationInactive ? "今年未參加，無法簽到" : "LINE 身分已綁定", session.participationInactive ? "error" : "success");
+      showMessage(statusMessage, session.participationInactive
+        ? "今年未參加，無法簽到或報名"
+        : session.alreadyCheckedIn ? "身分已確認，本場已簽到" : "LINE 身分已綁定",
+      session.participationInactive ? "error" : "success");
       return;
     }
     if (session.bindingPending) {
@@ -61,6 +72,50 @@
     }
     showPanel("bindingPanel");
     showMessage(statusMessage, "請完成首次身分核對", "");
+  }
+
+  function renderRegistrationEvents(events, disabled) {
+    const panel = document.getElementById("registrationPanel");
+    const empty = document.getElementById("noRegistrationEvents");
+    const list = document.getElementById("registrationList");
+    panel.classList.remove("hidden");
+    list.replaceChildren();
+    empty.classList.toggle("hidden", events.length > 0);
+    events.forEach(item => {
+      const card = document.createElement("article");
+      card.className = "registration-card";
+      const info = document.createElement("div");
+      info.className = "manage-card-info";
+      const title = document.createElement("strong");
+      title.textContent = item.name;
+      const meta = document.createElement("span");
+      meta.className = "muted";
+      meta.textContent = formatEventDate(item.event_date);
+      const state = document.createElement("span");
+      state.className = item.registered ? "badge success-badge" : "badge";
+      state.textContent = item.registered ? "已報名" : "尚未報名";
+      info.append(title, meta, state);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = item.registered ? "secondary compact-button" : "compact-button";
+      button.textContent = item.registered ? "取消報名" : "我要報名";
+      button.disabled = disabled;
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          const action = item.registered ? "cancelRegistration" : "registerEvent";
+          const result = await post(linePayload(action, { eventId: item.event_id }));
+          showMessage(statusMessage, result.message, "success");
+          await loadSession();
+        } catch (error) {
+          showMessage(statusMessage, error.message, "error");
+          button.disabled = false;
+        }
+      });
+      card.append(info, button);
+      list.appendChild(card);
+    });
   }
 
   async function loadSession() {
@@ -133,15 +188,29 @@
   });
 
   try {
-    await loadRoster();
     const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
       && new URLSearchParams(location.search).get("preview") === "1";
     if (localPreview) {
+      members = [
+        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長" },
+        { member_id: "P2526-002", zone: "第二專區", division: "第3分區", club: "示範", name: "示範會長" }
+      ];
       document.getElementById("lineName").textContent = "預覽使用者";
       document.getElementById("profilePanel").classList.remove("hidden");
-      renderSession({ member: null, bindingPending: false });
+      renderSession({
+        member: members[0],
+        event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
+        registrationEvents: [
+          { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會", registered: true },
+          { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會", registered: false }
+        ],
+        alreadyCheckedIn: false,
+        participationInactive: false,
+        bindingPending: false
+      });
       return;
     }
+    await loadRoster();
     if (!config.liffId || config.liffId.includes("PASTE_")) throw new Error("尚未設定 LIFF ID");
     await liff.init({ liffId: config.liffId });
     if (!liff.isLoggedIn()) return liff.login({ redirectUri: window.location.href });

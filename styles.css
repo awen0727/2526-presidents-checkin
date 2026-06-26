@@ -94,6 +94,9 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 .member-summary { margin-bottom: 20px; }
 .member-summary h2 { margin: 10px 0 2px; font-size: 1.75rem; }
 .event-box { margin: 18px 0; padding: 16px; border-left: 4px solid var(--gold); border-radius: 8px; background: #fbf7ea; font-weight: 700; }
+.registration-panel { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.registration-list { display: grid; gap: 10px; margin-top: 14px; }
+.registration-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: #fbfcfe; }
 
 .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
 .four-stats { grid-template-columns: repeat(4, 1fr); }
@@ -207,7 +210,9 @@ th { color: var(--navy); background: #edf3f9; font-size: .85rem; }
   .admin-toolbar-actions > * { flex: 1; }
   .inline-form, .member-controls { grid-template-columns: 1fr; }
   .manage-card { align-items: stretch; flex-direction: column; }
+  .registration-card { align-items: stretch; flex-direction: column; }
   .manage-card button { width: 100%; }
+  .registration-card button { width: 100%; }
   .search-input { width: 100%; }
   .member-filters { display: grid; grid-template-columns: 1fr; }
   .member-filters select { width: 100%; }

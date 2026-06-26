@@ -2,11 +2,12 @@ const SHEETS = Object.freeze({
   MEMBERS: "Members",
   BINDINGS: "BindingRequests",
   EVENTS: "Events",
+  REGISTRATIONS: "EventRegistrations",
   ATTENDANCE: "Attendance",
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-22-attendance-7";
+const API_VERSION = "2526-presidents-2026-06-26-registration-8";
 
 function doGet(e) {
   try {
@@ -34,6 +35,8 @@ function route_(payload) {
     getRoster: getRoster_,
     dashboard: dashboard_,
     requestBinding: requestBinding_,
+    registerEvent: registerEvent_,
+    cancelRegistration: cancelRegistration_,
     checkIn: checkIn_
   };
   const adminActions = {
@@ -48,6 +51,7 @@ function route_(payload) {
     adminUpdateMemberPhone: adminUpdateMemberPhone_,
     adminUnbindMember: adminUnbindMember_,
     adminSetParticipation: adminSetParticipation_,
+    adminRegistrationReport: adminRegistrationReport_,
     adminAttendanceReport: adminAttendanceReport_
   };
   if (publicActions[action]) return publicActions[action](payload);
@@ -64,12 +68,21 @@ function getSession_(payload) {
   const participating = Boolean(member && isParticipating_(member));
   const pending = findRows_(SHEETS.BINDINGS, row => row.line_user_id === line.sub && row.status === "pending").length > 0;
   const event = getOpenEvent_();
+  const registrations = participating ? registrationRows_().filter(row =>
+    row.member_id === member.member_id && row.status === "registered"
+  ) : [];
+  const registeredEventIds = {};
+  registrations.forEach(row => { registeredEventIds[row.event_id] = true; });
   const alreadyCheckedIn = Boolean(participating && event && findRows_(SHEETS.ATTENDANCE, row =>
     row.event_id === event.event_id && row.member_id === member.member_id
   ).length);
   return {
     member: member ? publicMember_(member) : null,
     event: participating && event ? publicEvent_(event) : null,
+    registrationEvents: participating ? getRegisterableEvents_().map(item => ({
+      ...publicEvent_(item),
+      registered: Boolean(registeredEventIds[item.event_id])
+    })) : [],
     bindingPending: pending,
     participationInactive: Boolean(member && !participating),
     alreadyCheckedIn
@@ -161,6 +174,76 @@ function requestBinding_(payload) {
   }
 }
 
+function registerEvent_(payload) {
+  const line = verifyLineIdentity_(payload);
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+    if (!member || !isParticipating_(member)) throw new Error("您未列入今年參加名單");
+    const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+    if (!event) throw new Error("找不到活動");
+    if (!isEventRegisterable_(event)) throw new Error("此活動已截止報名");
+    const existing = registrationRows_().find(row =>
+      row.event_id === eventId && row.member_id === member.member_id
+    );
+    if (existing && existing.status === "registered") throw new Error("您已完成此活動報名");
+    if (existing) {
+      updateRow_(SHEETS.REGISTRATIONS, existing._row, {
+        name_snapshot: member.name,
+        club_snapshot: member.club,
+        status: "registered",
+        registered_at: now_(),
+        canceled_at: "",
+        source: "LINE"
+      });
+    } else {
+      append_(SHEETS.REGISTRATIONS, {
+        registration_id: id_("RG"),
+        event_id: event.event_id,
+        member_id: member.member_id,
+        name_snapshot: member.name,
+        club_snapshot: member.club,
+        status: "registered",
+        registered_at: now_(),
+        canceled_at: "",
+        source: "LINE"
+      });
+    }
+    audit_("event_registered", member.member_id, event.event_id, "LINE");
+    return { message: `${event.name} 報名成功` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function cancelRegistration_(payload) {
+  const line = verifyLineIdentity_(payload);
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+    if (!member || !isParticipating_(member)) throw new Error("您未列入今年參加名單");
+    const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+    if (!event) throw new Error("找不到活動");
+    if (!isEventRegisterable_(event)) throw new Error("此活動已截止取消報名");
+    const existing = registrationRows_().find(row =>
+      row.event_id === eventId && row.member_id === member.member_id && row.status === "registered"
+    );
+    if (!existing) throw new Error("尚未報名此活動");
+    updateRow_(SHEETS.REGISTRATIONS, existing._row, {
+      status: "canceled",
+      canceled_at: now_()
+    });
+    audit_("event_registration_canceled", member.member_id, event.event_id, "LINE");
+    return { message: `${event.name} 已取消報名` };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function checkIn_(payload) {
   const line = verifyLineIdentity_(payload);
   const lock = LockService.getScriptLock();
@@ -193,6 +276,7 @@ function checkIn_(payload) {
 function adminOverview_() {
   const members = rows_(SHEETS.MEMBERS);
   const events = rows_(SHEETS.EVENTS);
+  const registrationCounts = eventRegistrationCounts_(registrationRows_());
   const openEvent = getOpenEvent_();
   const attendance = openEvent
     ? findRows_(SHEETS.ATTENDANCE, row => row.event_id === openEvent.event_id)
@@ -223,7 +307,8 @@ function adminOverview_() {
       event_id: event.event_id,
       event_date: event.event_date,
       name: event.name,
-      status: event.status
+      status: event.status,
+      registration_count: registrationCounts[event.event_id] || 0
     })),
     attendance: attendance.map(row => ({
       attendance_id: row.attendance_id,
@@ -326,11 +411,16 @@ function adminDeleteEvent_(payload) {
   const attendanceRows = findRows_(SHEETS.ATTENDANCE, row => row.event_id === eventId)
     .map(row => row._row)
     .sort((a, b) => b - a);
+  const registrationRows = registrationRows_().filter(row => row.event_id === eventId)
+    .map(row => row._row)
+    .sort((a, b) => b - a);
+  const registrationSheet = sheet_(SHEETS.REGISTRATIONS);
   const attendanceSheet = sheet_(SHEETS.ATTENDANCE);
+  registrationRows.forEach(rowNumber => registrationSheet.deleteRow(rowNumber));
   attendanceRows.forEach(rowNumber => attendanceSheet.deleteRow(rowNumber));
   sheet_(SHEETS.EVENTS).deleteRow(event._row);
-  audit_("event_deleted", "admin", eventId, `${event.event_date} ${event.name}; attendance=${attendanceRows.length}`);
-  return { message: `活動已刪除，並移除 ${attendanceRows.length} 筆簽到紀錄` };
+  audit_("event_deleted", "admin", eventId, `${event.event_date} ${event.name}; attendance=${attendanceRows.length}; registrations=${registrationRows.length}`);
+  return { message: `活動已刪除，並移除 ${attendanceRows.length} 筆簽到紀錄、${registrationRows.length} 筆報名紀錄` };
 }
 
 function adminManualCheckIn_(payload) {
@@ -402,6 +492,35 @@ function adminSetParticipation_(payload) {
   });
   audit_("participation_changed", "admin", memberId, participating ? "participating" : "not_participating");
   return { message: participating ? "已列為今年參加" : "已列為今年未參加" };
+}
+
+function adminRegistrationReport_(payload) {
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+  if (!event) throw new Error("找不到活動");
+  const memberById = {};
+  rows_(SHEETS.MEMBERS).forEach(member => { memberById[member.member_id] = member; });
+  const registrants = registrationRows_()
+    .filter(row => row.event_id === eventId && row.status === "registered")
+    .map(row => {
+      const member = memberById[row.member_id] || {};
+      return {
+        registration_id: row.registration_id,
+        member_id: row.member_id,
+        zone: member.zone || "",
+        division: member.division || "",
+        club: row.club_snapshot || member.club || "",
+        name: row.name_snapshot || member.name || "",
+        registered_at: row.registered_at,
+        source: row.source || "LINE"
+      };
+    })
+    .sort((a, b) => compareMemberOrder_(a, b) || String(a.registered_at).localeCompare(String(b.registered_at)));
+  return {
+    event: publicEvent_(event),
+    registrants,
+    total: registrants.length
+  };
 }
 
 function adminAttendanceReport_(payload) {
@@ -480,6 +599,54 @@ function closeOpenEvents_() {
   findRows_(SHEETS.EVENTS, row => row.status === "open").forEach(event => {
     updateRow_(SHEETS.EVENTS, event._row, { status: "closed" });
   });
+}
+
+function registrationRows_() {
+  ensureRegistrationSheet_();
+  return rows_(SHEETS.REGISTRATIONS);
+}
+
+function ensureRegistrationSheet_() {
+  const spreadsheet = spreadsheet_();
+  let sheet = spreadsheet.getSheetByName(SHEETS.REGISTRATIONS);
+  if (sheet) return;
+  const headers = SCHEMA[SHEETS.REGISTRATIONS];
+  if (!headers) throw new Error(`未定義資料表：${SHEETS.REGISTRATIONS}`);
+  sheet = spreadsheet.insertSheet(SHEETS.REGISTRATIONS);
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight("bold")
+    .setFontColor("#ffffff")
+    .setBackground("#163f73");
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function getRegisterableEvents_() {
+  const today = today_();
+  return rows_(SHEETS.EVENTS)
+    .filter(isEventRegisterable_)
+    .sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
+}
+
+function isEventRegisterable_(event) {
+  return String((event && event.event_date) || "") >= today_();
+}
+
+function eventRegistrationCounts_(registrations) {
+  const counts = {};
+  registrations.forEach(row => {
+    if (row.status !== "registered") return;
+    counts[row.event_id] = (counts[row.event_id] || 0) + 1;
+  });
+  return counts;
+}
+
+function compareMemberOrder_(a, b) {
+  return String(a.zone || "").localeCompare(String(b.zone || ""), "zh-Hant", { numeric: true })
+    || String(a.division || "").localeCompare(String(b.division || ""), "zh-Hant", { numeric: true })
+    || String(a.club || "").localeCompare(String(b.club || ""), "zh-Hant", { numeric: true })
+    || String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", { numeric: true });
 }
 
 function expireStaleOpenEvents_() {

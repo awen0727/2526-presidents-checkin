@@ -2,6 +2,7 @@ const SCHEMA = Object.freeze({
   Members: ["member_id", "zone", "division", "club", "name", "phone", "status", "line_user_id", "line_display_name", "updated_at"],
   BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
   Events: ["event_id", "event_date", "name", "status", "created_at"],
+  EventRegistrations: ["registration_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "status", "registered_at", "canceled_at", "source"],
   Attendance: ["attendance_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "checkin_at", "source"],
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });

@@ -7,7 +7,9 @@
   const adminMessage = document.getElementById("adminMessage");
   const reportMessage = document.getElementById("reportMessage");
   const memberDetailDialog = document.getElementById("memberDetailDialog");
-  let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0 };
+  const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
+    && new URLSearchParams(location.search).get("preview") === "1";
+  let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0, registrationReports: {} };
   let report = {
     events: [],
     selectedEvent: null,
@@ -172,11 +174,14 @@
       const info = makeElement("div", "manage-card-info");
       info.append(
         makeElement("strong", "", event.name),
-        makeElement("span", "muted", `${event.event_date} · ${event.status === "open" ? "簽到開放中" : "已關閉"}`)
+        makeElement("span", "muted", `${event.event_date} · ${event.status === "open" ? "簽到開放中" : "已關閉"} · ${event.registration_count || 0} 人已報名`)
       );
       const nextStatus = event.status === "open" ? "closed" : "open";
       const label = event.status === "open" ? "關閉" : "重新開放";
       const actions = makeElement("div", "button-row");
+      const registrationButton = makeButton("查看報名", "secondary compact-button", () => {
+        openEventRegistrations(event).catch(error => showMessage(adminMessage, error.message, "error"));
+      });
       const attendanceButton = makeButton("查看出席人員", "secondary compact-button", () => {
         openEventAttendance(event).catch(error => showMessage(adminMessage, error.message, "error"));
       });
@@ -194,7 +199,7 @@
       });
       deleteButton.disabled = event.status === "open";
       deleteButton.title = event.status === "open" ? "請先關閉活動才能刪除" : "永久刪除活動及該場簽到紀錄";
-      actions.append(attendanceButton, statusButton, deleteButton);
+      actions.append(registrationButton, attendanceButton, statusButton, deleteButton);
       card.append(info, actions);
       list.appendChild(card);
     });
@@ -574,6 +579,35 @@
     });
   }
 
+  async function openEventRegistrations(event) {
+    let result;
+    if (localPreview) {
+      result = state.registrationReports[event.event_id] || { event, registrants: [], total: 0 };
+    } else {
+      result = await post({ action: "adminRegistrationReport", adminToken: adminToken(), eventId: event.event_id });
+    }
+    const card = document.getElementById("registrationReportCard");
+    const rows = document.getElementById("registrationRows");
+    document.getElementById("registrationReportTitle").textContent = `${result.event.name} 報名名單`;
+    document.getElementById("registrationReportMeta").textContent = result.event.event_date;
+    document.getElementById("registrationReportBadge").textContent = `已報名 ${result.total} 人`;
+    rows.replaceChildren();
+    (result.registrants || []).forEach(person => {
+      const row = document.createElement("tr");
+      addCell(row, `${person.zone || ""}／${person.division || ""}`);
+      addCell(row, person.club || "");
+      addCell(row, person.name || "姓名待補");
+      addCell(row, formatDateTime(person.registered_at));
+      addCell(row, person.source || "");
+      rows.appendChild(row);
+    });
+    document.getElementById("noRegistrants").classList.toggle("hidden", Boolean(result.registrants && result.registrants.length));
+    card.classList.remove("hidden");
+    window.requestAnimationFrame(() => {
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function render() {
     renderOverview();
     renderManualMembers();
@@ -691,21 +725,39 @@
     else memberDetailDialog.removeAttribute("open");
   });
 
-  const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
-    && new URLSearchParams(location.search).get("preview") === "1";
   if (localPreview) {
     state = {
       requests: [],
       memberCount: 114,
       notParticipatingCount: 1,
       boundCount: 38,
-      currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" },
-      events: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試", status: "open" }],
+      currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
+      events: [
+        { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會", status: "open", registration_count: 2 },
+        { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會", status: "closed", registration_count: 1 }
+      ],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [
         { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_display_name: "LINE 預覽" },
         { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_display_name: "" }
-      ]
+      ],
+      registrationReports: {
+        "EV-PREVIEW": {
+          event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
+          total: 2,
+          registrants: [
+            { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", registered_at: new Date().toISOString(), source: "LINE" },
+            { member_id: "P2526-003", zone: "第二專區", division: "第3分區", club: "示範", name: "示範會長", registered_at: new Date(Date.now() - 3600000).toISOString(), source: "LINE" }
+          ]
+        },
+        "EV-NEXT": {
+          event: { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會" },
+          total: 1,
+          registrants: [
+            { member_id: "P2526-003", zone: "第二專區", division: "第3分區", club: "示範", name: "示範會長", registered_at: new Date(Date.now() - 7200000).toISOString(), source: "LINE" }
+          ]
+        }
+      }
     };
     report = {
       events: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" }],

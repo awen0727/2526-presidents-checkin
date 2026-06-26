@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260620-admin2">
+  <link rel="stylesheet" href="styles.css?v=20260626-registration8">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="config.js?v=20260622-attendance7"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
-  <script src="checkin.js?v=20260620-sort1" defer></script>
+  <script src="checkin.js?v=20260626-registration8" defer></script>
 </head>
 <body>
   <header class="hero">
@@ -74,6 +74,16 @@
       </div>
       <div id="eventBox" class="event-box"></div>
       <button id="checkinButton" type="button">確認簽到</button>
+      <section id="registrationPanel" class="registration-panel hidden">
+        <div class="section-heading">
+          <div>
+            <h2>活動報名</h2>
+            <p class="muted">取代 LINE 接龍，可直接在這裡報名或取消報名。</p>
+          </div>
+        </div>
+        <div id="noRegistrationEvents" class="empty-state">目前沒有開放報名的活動。</div>
+        <div id="registrationList" class="registration-list"></div>
+      </section>
     </section>
 
     <section id="successPanel" class="card success-card hidden">
