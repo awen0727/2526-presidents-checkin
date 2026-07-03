@@ -10,6 +10,7 @@
   const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
     && new URLSearchParams(location.search).get("preview") === "1";
   let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0, registrationReports: {}, lineOfficial: null };
+  const selectedMemberIds = new Set();
   let report = {
     events: [],
     selectedEvent: null,
@@ -106,6 +107,10 @@
     return status === "open" ? "開放中" : "已關閉";
   }
 
+  function gateShortLabel(status) {
+    return status === "open" ? "開放" : "關閉";
+  }
+
   function eventMeta(event) {
     return [event.event_date, event.event_time].filter(Boolean).join(" ");
   }
@@ -200,13 +205,18 @@
     [...state.events].reverse().forEach(event => {
       const card = makeElement("article", "manage-card");
       const info = makeElement("div", "manage-card-info");
+      const eventStats = makeElement("div", "event-status-grid");
+      const attendanceCount = event.attendance_count == null ? "待更新" : event.attendance_count;
+      eventStats.append(
+        makeElement("span", "", `報名人數：${event.registration_count || 0}`),
+        makeElement("span", "", `已簽到人數：${attendanceCount}`),
+        makeElement("span", eventRegistrationStatus(event) === "open" ? "status-open" : "status-closed", `報名：${gateShortLabel(eventRegistrationStatus(event))}`),
+        makeElement("span", eventCheckinStatus(event) === "open" ? "status-open" : "status-closed", `簽到：${gateShortLabel(eventCheckinStatus(event))}`)
+      );
       info.append(
         makeElement("strong", "", event.name),
-        makeElement(
-          "span",
-          "muted",
-          `${eventMeta(event)} · 報名${gateLabel(eventRegistrationStatus(event))} · 簽到${gateLabel(eventCheckinStatus(event))} · ${event.registration_count || 0} 人已報名`
-        )
+        makeElement("span", "muted", eventMeta(event)),
+        eventStats
       );
       const nextRegistrationStatus = eventRegistrationStatus(event) === "open" ? "closed" : "open";
       const nextCheckinStatus = eventCheckinStatus(event) === "open" ? "closed" : "open";
@@ -354,11 +364,23 @@
     buildMemberFilters();
     const list = document.getElementById("memberList");
     list.replaceChildren();
-    filteredMembers().forEach(member => {
+    const visibleMembers = filteredMembers();
+    visibleMembers.forEach(member => {
       const card = makeElement("article", "member-admin-card");
       const heading = makeElement("div", "review-heading");
       const info = makeElement("div", "manage-card-info");
+      const selection = makeElement("label", "member-select-check");
+      const checkbox = makeElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedMemberIds.has(member.member_id);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) selectedMemberIds.add(member.member_id);
+        else selectedMemberIds.delete(member.member_id);
+        updateBulkSelection(visibleMembers);
+      });
+      selection.append(checkbox, document.createTextNode("選取"));
       info.append(
+        selection,
         makeElement("strong", "", `${member.club}｜${member.name || "姓名待補"}`),
         makeElement("span", "muted", `${member.zone} · ${member.division}`),
         makeElement("span", member.participating ? "participating-state" : "not-participating-state", member.participating ? "今年參加" : "今年未參加"),
@@ -394,6 +416,42 @@
       card.append(heading, controls);
       list.appendChild(card);
     });
+    updateBulkSelection(visibleMembers);
+  }
+
+  function updateBulkSelection(visibleMembers) {
+    const visibleIds = visibleMembers.map(member => member.member_id);
+    const selectedVisibleCount = visibleIds.filter(id => selectedMemberIds.has(id)).length;
+    const totalSelectedCount = selectedMemberIds.size;
+    const selectAll = document.getElementById("selectAllMembers");
+    if (selectAll) {
+      selectAll.checked = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+      selectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+    }
+    document.getElementById("selectedMembersCount").textContent = `已選 ${totalSelectedCount} 位`;
+    document.getElementById("bulkParticipatingButton").disabled = totalSelectedCount === 0;
+    document.getElementById("bulkNotParticipatingButton").disabled = totalSelectedCount === 0;
+  }
+
+  function setVisibleMemberSelection(checked) {
+    filteredMembers().forEach(member => {
+      if (checked) selectedMemberIds.add(member.member_id);
+      else selectedMemberIds.delete(member.member_id);
+    });
+    renderMembers();
+  }
+
+  function bulkSetParticipation(participating) {
+    const memberIds = Array.from(selectedMemberIds);
+    if (!memberIds.length) return showMessage(adminMessage, "請先選擇會長", "error");
+    runAction(
+      { action: "adminSetBulkParticipation", memberIds, participating },
+      `確定將已選取的 ${memberIds.length} 位會長改為${participating ? "今年參加" : "今年未參加"}嗎？`
+    ).then(() => {
+      selectedMemberIds.clear();
+      renderMembers();
+    })
+      .catch(error => showMessage(adminMessage, error.message, "error"));
   }
 
   function personCard(person, index) {
@@ -687,6 +745,10 @@
 
   async function load() {
     state = await post({ action: "adminOverview", adminToken: adminToken() });
+    const currentMemberIds = new Set((state.members || []).map(member => member.member_id));
+    Array.from(selectedMemberIds).forEach(memberId => {
+      if (!currentMemberIds.has(memberId)) selectedMemberIds.delete(memberId);
+    });
     render();
     await loadReport(document.getElementById("reportEventFilter").value);
     document.getElementById("loginPanel").classList.add("hidden");
@@ -783,6 +845,11 @@
   document.getElementById("memberZoneFilter").addEventListener("change", renderMembers);
   document.getElementById("memberDivisionFilter").addEventListener("change", renderMembers);
   document.getElementById("memberClubFilter").addEventListener("change", renderMembers);
+  document.getElementById("selectAllMembers").addEventListener("change", event => {
+    setVisibleMemberSelection(event.currentTarget.checked);
+  });
+  document.getElementById("bulkParticipatingButton").addEventListener("click", () => bulkSetParticipation(true));
+  document.getElementById("bulkNotParticipatingButton").addEventListener("click", () => bulkSetParticipation(false));
   document.getElementById("reportEventFilter").addEventListener("change", event => {
     loadReport(event.target.value).catch(error => showMessage(reportMessage, error.message, "error"));
   });
@@ -804,8 +871,8 @@
       boundCount: 38,
       currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會" },
       events: [
-        { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會", status: "open", registration_status: "closed", checkin_status: "open", registration_count: 2 },
-        { event_id: "EV-NEXT", event_date: "2026-07-18", event_time: "18:00", name: "七月份會長聯誼會", status: "closed", registration_status: "open", checkin_status: "closed", registration_count: 1 }
+        { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會", status: "open", registration_status: "closed", checkin_status: "open", registration_count: 2, attendance_count: 1 },
+        { event_id: "EV-NEXT", event_date: "2026-07-18", event_time: "18:00", name: "七月份會長聯誼會", status: "closed", registration_status: "open", checkin_status: "closed", registration_count: 1, attendance_count: 0 }
       ],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [

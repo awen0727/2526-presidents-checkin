@@ -77,6 +77,15 @@
 - `CHECKIN_URL`：會長端入口，可填 LIFF URL；未填時使用系統預設 LIFF URL
 - `ADMIN_LINE_USER_IDS`：選填，管理者 LINE userId，多位用逗號分隔；用於待審、報名、取消報名通知
 
+綁定與聯動方式：
+
+1. LINE Developers 中建立或使用既有 Messaging API channel。
+2. 複製 Messaging API 的 Channel access token，填入 Apps Script 指令碼屬性 `LINE_CHANNEL_ACCESS_TOKEN`。
+3. 在官方帳號管理後台啟用 Webhook。
+4. Webhook URL 填入目前 Apps Script Web App `/exec` 網址。
+5. `CHECKIN_URL` 建議填 LIFF URL：`https://liff.line.me/2010452724-MvUou0rS`。
+6. 若管理者要收到待審、報名、取消報名通知，將管理者 LINE userId 填入 `ADMIN_LINE_USER_IDS`。
+
 注意事項：
 
 - LIFF/Login channel 與 Messaging API channel 建議放在同一個 LINE Developers provider。

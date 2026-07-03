@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260703-split10">
+  <link rel="stylesheet" href="styles.css?v=20260704-bulk13">
   <script src="config.js?v=20260703-lineoa9"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260620-xlsx1" defer></script>
-  <script src="admin.js?v=20260704-time11" defer></script>
+  <script src="admin.js?v=20260704-bulk13" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -195,6 +195,12 @@
               </select>
               <input id="memberSearch" class="search-input" type="search" placeholder="輸入關鍵字搜尋">
             </div>
+          </div>
+          <div class="bulk-toolbar">
+            <label class="bulk-check"><input id="selectAllMembers" type="checkbox">選取目前篩選結果</label>
+            <span id="selectedMembersCount" class="muted">已選 0 位</span>
+            <button id="bulkParticipatingButton" class="secondary compact-button" type="button">批次改為今年參加</button>
+            <button id="bulkNotParticipatingButton" class="secondary compact-button" type="button">批次改為今年未參加</button>
           </div>
           <div id="memberList" class="manage-list"></div>
         </section>

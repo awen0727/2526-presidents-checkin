@@ -7,7 +7,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-04-manual-checkin-open-12";
+const API_VERSION = "2526-presidents-2026-07-04-admin-summary-bulk-13";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -74,6 +74,7 @@ function route_(payload) {
     adminUpdateMemberPhone: adminUpdateMemberPhone_,
     adminUnbindMember: adminUnbindMember_,
     adminSetParticipation: adminSetParticipation_,
+    adminSetBulkParticipation: adminSetBulkParticipation_,
     adminRegistrationReport: adminRegistrationReport_,
     adminLineStatus: adminLineStatus_,
     adminSendRegistrationInvite: adminSendRegistrationInvite_,
@@ -312,6 +313,7 @@ function adminOverview_() {
   const members = rows_(SHEETS.MEMBERS);
   const events = eventRows_();
   const registrationCounts = eventRegistrationCounts_(registrationRows_());
+  const attendanceCounts = eventAttendanceCounts_(rows_(SHEETS.ATTENDANCE));
   const openEvent = getOpenEvent_();
   const attendance = openEvent
     ? findRows_(SHEETS.ATTENDANCE, row => row.event_id === openEvent.event_id)
@@ -347,7 +349,8 @@ function adminOverview_() {
       status: event.status,
       registration_status: eventRegistrationStatus_(event),
       checkin_status: eventCheckinStatus_(event),
-      registration_count: registrationCounts[event.event_id] || 0
+      registration_count: registrationCounts[event.event_id] || 0,
+      attendance_count: attendanceCounts[event.event_id] || 0
     })),
     attendance: attendance.map(row => ({
       attendance_id: row.attendance_id,
@@ -569,6 +572,28 @@ function adminSetParticipation_(payload) {
   });
   audit_("participation_changed", "admin", memberId, participating ? "participating" : "not_participating");
   return { message: participating ? "已列為今年參加" : "已列為今年未參加" };
+}
+
+function adminSetBulkParticipation_(payload) {
+  const memberIds = Array.isArray(payload.memberIds) ? payload.memberIds : [];
+  const participating = payload.participating === true;
+  const uniqueIds = Array.from(new Set(memberIds.map(id => cleanText_(id, 30, "會長編號")).filter(Boolean)));
+  if (!uniqueIds.length) throw new Error("請先選擇會長");
+  const members = rows_(SHEETS.MEMBERS);
+  const memberById = {};
+  members.forEach(member => { memberById[member.member_id] = member; });
+  let updated = 0;
+  uniqueIds.forEach(memberId => {
+    const member = memberById[memberId];
+    if (!member) return;
+    updateRow_(SHEETS.MEMBERS, member._row, {
+      status: participating ? "participating" : "not_participating",
+      updated_at: now_()
+    });
+    updated += 1;
+  });
+  audit_("bulk_participation_changed", "admin", `${updated} members`, participating ? "participating" : "not_participating");
+  return { message: `已批次更新 ${updated} 位會長為${participating ? "今年參加" : "今年未參加"}` };
 }
 
 function adminRegistrationReport_(payload) {
@@ -857,6 +882,18 @@ function eventRegistrationCounts_(registrations) {
   const counts = {};
   registrations.forEach(row => {
     if (row.status !== "registered") return;
+    counts[row.event_id] = (counts[row.event_id] || 0) + 1;
+  });
+  return counts;
+}
+
+function eventAttendanceCounts_(attendanceRows) {
+  const seen = {};
+  const counts = {};
+  attendanceRows.forEach(row => {
+    const key = `${row.event_id}|${row.member_id}`;
+    if (!row.event_id || !row.member_id || seen[key]) return;
+    seen[key] = true;
     counts[row.event_id] = (counts[row.event_id] || 0) + 1;
   });
   return counts;
