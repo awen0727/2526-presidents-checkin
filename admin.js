@@ -9,7 +9,7 @@
   const memberDetailDialog = document.getElementById("memberDetailDialog");
   const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname)
     && new URLSearchParams(location.search).get("preview") === "1";
-  let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0, registrationReports: {} };
+  let state = { requests: [], members: [], events: [], attendance: [], currentEvent: null, notParticipatingCount: 0, registrationReports: {}, lineOfficial: null };
   let report = {
     events: [],
     selectedEvent: null,
@@ -128,6 +128,18 @@
     }
   }
 
+  function renderLineOfficial() {
+    const status = state.lineOfficial || {};
+    const badge = document.getElementById("lineOfficialBadge");
+    const text = document.getElementById("lineOfficialStatus");
+    if (!badge || !text) return;
+    badge.textContent = status.configured ? "推播可用" : "尚未設定";
+    badge.className = status.configured ? "badge success-badge" : "badge warning-badge";
+    text.textContent = status.configured
+      ? `已設定 LINE_CHANNEL_ACCESS_TOKEN；目前可推播綁定會長 ${status.boundCount || 0} 位。`
+      : "尚未設定 LINE_CHANNEL_ACCESS_TOKEN；報名功能可用，但官方帳號推播按鈕會失敗。";
+  }
+
   function renderManualMembers() {
     const attendedIds = new Set(state.attendance.map(row => row.member_id));
     const select = document.getElementById("manualMember");
@@ -185,6 +197,18 @@
       const attendanceButton = makeButton("查看出席人員", "secondary compact-button", () => {
         openEventAttendance(event).catch(error => showMessage(adminMessage, error.message, "error"));
       });
+      const inviteButton = makeButton("推播報名", "secondary compact-button", () => {
+        sendLineAction(event, "adminSendRegistrationInvite", "確定推播報名通知給所有已綁定會長嗎？")
+          .catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      const reminderButton = makeButton("活動提醒", "secondary compact-button", () => {
+        sendLineAction(event, "adminSendEventReminder", "確定推播活動提醒給已報名會長嗎？")
+          .catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      const checkinReminderButton = makeButton("簽到提醒", "secondary compact-button", () => {
+        sendLineAction(event, "adminSendCheckinReminder", "確定推播簽到提醒給已報名但尚未簽到者嗎？")
+          .catch(error => showMessage(adminMessage, error.message, "error"));
+      });
       const statusButton = makeButton(label, "secondary compact-button", () => {
         runAction(
           { action: "adminSetEventStatus", eventId: event.event_id, status: nextStatus },
@@ -199,7 +223,7 @@
       });
       deleteButton.disabled = event.status === "open";
       deleteButton.title = event.status === "open" ? "請先關閉活動才能刪除" : "永久刪除活動及該場簽到紀錄";
-      actions.append(registrationButton, attendanceButton, statusButton, deleteButton);
+      actions.append(registrationButton, attendanceButton, inviteButton, reminderButton, checkinReminderButton, statusButton, deleteButton);
       card.append(info, actions);
       list.appendChild(card);
     });
@@ -608,6 +632,14 @@
     });
   }
 
+  async function sendLineAction(event, action, confirmation) {
+    if (localPreview) {
+      showMessage(adminMessage, `${event.name}：本機預覽已模擬送出 LINE 通知`, "success");
+      return;
+    }
+    await runAction({ action, eventId: event.event_id }, confirmation);
+  }
+
   function render() {
     renderOverview();
     renderManualMembers();
@@ -615,6 +647,7 @@
     renderEvents();
     renderRequests();
     renderMembers();
+    renderLineOfficial();
   }
 
   async function load() {
@@ -741,6 +774,7 @@
         { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_display_name: "LINE 預覽" },
         { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_display_name: "" }
       ],
+      lineOfficial: { configured: true, boundCount: 38, checkinUrl: "https://liff.line.me/2010452724-MvUou0rS" },
       registrationReports: {
         "EV-PREVIEW": {
           event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },

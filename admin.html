@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260626-registration8">
+  <link rel="stylesheet" href="styles.css?v=20260703-lineoa9">
   <script src="config.js?v=20260622-attendance7"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260620-xlsx1" defer></script>
-  <script src="admin.js?v=20260626-registration8" defer></script>
+  <script src="admin.js?v=20260703-lineoa9" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -89,6 +89,16 @@
       </div>
 
       <div id="eventsTab" class="admin-tab-panel hidden">
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <h2>LINE 官方帳號</h2>
+              <p id="lineOfficialStatus" class="muted">正在讀取官方帳號推播狀態...</p>
+            </div>
+            <span id="lineOfficialBadge" class="badge">未確認</span>
+          </div>
+          <p class="muted">推播報名通知、活動提醒與簽到提醒會使用 LINE Messaging API。會長需已完成 LINE 綁定，且需加入官方帳號。</p>
+        </section>
         <section class="card">
           <h2>建立活動</h2>
           <div class="form-grid event-form">

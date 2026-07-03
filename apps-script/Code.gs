@@ -7,7 +7,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-06-26-registration-8";
+const API_VERSION = "2526-presidents-2026-07-03-line-oa-9";
 
 function doGet(e) {
   try {
@@ -22,10 +22,28 @@ function doGet(e) {
 function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || "{}");
+    if (Array.isArray(payload.events)) return json_({ ok: true, apiVersion: API_VERSION, ...handleLineWebhook_(payload) });
     return json_({ ok: true, apiVersion: API_VERSION, ...route_(payload) });
   } catch (error) {
     return json_({ ok: false, apiVersion: API_VERSION, error: error.message });
   }
+}
+
+function handleLineWebhook_(payload) {
+  (payload.events || []).forEach(event => {
+    if (!event.replyToken) return;
+    if (event.type === "follow") {
+      replyLineTextSafe_(event.replyToken, officialAccountHelpText_());
+      return;
+    }
+    if (event.type === "message" && event.message && event.message.type === "text") {
+      const text = String(event.message.text || "").trim();
+      if (/報名|簽到|出席|活動|查詢|help|menu/i.test(text)) {
+        replyLineTextSafe_(event.replyToken, officialAccountHelpText_());
+      }
+    }
+  });
+  return { message: "webhook accepted" };
 }
 
 function route_(payload) {
@@ -52,6 +70,10 @@ function route_(payload) {
     adminUnbindMember: adminUnbindMember_,
     adminSetParticipation: adminSetParticipation_,
     adminRegistrationReport: adminRegistrationReport_,
+    adminLineStatus: adminLineStatus_,
+    adminSendRegistrationInvite: adminSendRegistrationInvite_,
+    adminSendEventReminder: adminSendEventReminder_,
+    adminSendCheckinReminder: adminSendCheckinReminder_,
     adminAttendanceReport: adminAttendanceReport_
   };
   if (publicActions[action]) return publicActions[action](payload);
@@ -168,6 +190,7 @@ function requestBinding_(payload) {
       resolved_by: ""
     });
     audit_("binding_requested", line.sub, member.member_id, "last4 mismatch");
+    notifyAdminsSafe_(`2526會長聯誼會待審核\n${member.club}｜${member.name || "姓名待補"}\n手機末四碼不符，請至後台身分審核。`);
     return { status: "pending", message: "末四碼未能核對，已交由管理者確認" };
   } finally {
     lock.releaseLock();
@@ -212,6 +235,8 @@ function registerEvent_(payload) {
       });
     }
     audit_("event_registered", member.member_id, event.event_id, "LINE");
+    pushLineTextSafe_(member.line_user_id, registrationConfirmationText_(event, member));
+    notifyAdminsSafe_(`活動報名通知\n${event.event_date} ${event.name}\n${member.club}｜${member.name || "姓名待補"} 已報名。`);
     return { message: `${event.name} 報名成功` };
   } finally {
     lock.releaseLock();
@@ -238,6 +263,8 @@ function cancelRegistration_(payload) {
       canceled_at: now_()
     });
     audit_("event_registration_canceled", member.member_id, event.event_id, "LINE");
+    pushLineTextSafe_(member.line_user_id, registrationCanceledText_(event, member));
+    notifyAdminsSafe_(`活動報名取消\n${event.event_date} ${event.name}\n${member.club}｜${member.name || "姓名待補"} 已取消報名。`);
     return { message: `${event.name} 已取消報名` };
   } finally {
     lock.releaseLock();
@@ -302,6 +329,7 @@ function adminOverview_() {
     totalMemberCount: members.length,
     notParticipatingCount: members.filter(member => !isParticipating_(member)).length,
     boundCount: members.filter(member => isParticipating_(member) && member.line_user_id).length,
+    lineOfficial: lineStatusFromMembers_(members.filter(isParticipating_)),
     currentEvent: openEvent ? publicEvent_(openEvent) : null,
     events: events.map(event => ({
       event_id: event.event_id,
@@ -523,6 +551,76 @@ function adminRegistrationReport_(payload) {
   };
 }
 
+function adminLineStatus_() {
+  const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
+  return lineStatusFromMembers_(members);
+}
+
+function lineStatusFromMembers_(members) {
+  return {
+    configured: Boolean(lineChannelAccessToken_()),
+    boundCount: members.filter(member => member.line_user_id).length,
+    checkinUrl: checkinUrl_(),
+    note: "官方帳號推播需設定 LINE_CHANNEL_ACCESS_TOKEN，且會長需加入官方帳號。"
+  };
+}
+
+function adminSendRegistrationInvite_(payload) {
+  const event = requireEvent_(payload.eventId);
+  if (!isEventRegisterable_(event)) throw new Error("此活動已過期，無法推播報名通知");
+  const members = rows_(SHEETS.MEMBERS).filter(member => isParticipating_(member) && member.line_user_id);
+  const message = registrationInviteText_(event);
+  const result = multicastLineText_(members.map(member => member.line_user_id), message);
+  audit_("line_registration_invite", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+  return { message: `已送出報名通知：${result.sent} 位，略過 ${result.skipped} 位` };
+}
+
+function adminSendEventReminder_(payload) {
+  const event = requireEvent_(payload.eventId);
+  const members = registeredMembersForEvent_(event.event_id);
+  const result = multicastLineText_(members.map(member => member.line_user_id), eventReminderText_(event));
+  audit_("line_event_reminder", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+  return { message: `已提醒已報名者：${result.sent} 位，略過 ${result.skipped} 位` };
+}
+
+function adminSendCheckinReminder_(payload) {
+  const event = requireEvent_(payload.eventId);
+  const attendanceIds = {};
+  findRows_(SHEETS.ATTENDANCE, row => row.event_id === event.event_id)
+    .forEach(row => { attendanceIds[row.member_id] = true; });
+  const members = registeredMembersForEvent_(event.event_id)
+    .filter(member => !attendanceIds[member.member_id]);
+  const result = multicastLineText_(members.map(member => member.line_user_id), checkinReminderText_(event));
+  audit_("line_checkin_reminder", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+  return { message: `已提醒未簽到者：${result.sent} 位，略過 ${result.skipped} 位` };
+}
+
+function sendTomorrowEventReminders() {
+  const tomorrow = Utilities.formatDate(new Date(Date.now() + 24 * 60 * 60 * 1000), "Asia/Taipei", "yyyy-MM-dd");
+  const events = rows_(SHEETS.EVENTS).filter(event => event.event_date === tomorrow);
+  let sent = 0;
+  events.forEach(event => {
+    const members = registeredMembersForEvent_(event.event_id);
+    const result = multicastLineText_(members.map(member => member.line_user_id), eventReminderText_(event));
+    sent += result.sent;
+    audit_("line_tomorrow_event_reminder", "trigger", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+  });
+  return { events: events.length, sent };
+}
+
+function sendTodayCheckinReminders() {
+  const event = getOpenEvent_();
+  if (!event) return { event: null, sent: 0 };
+  const attendanceIds = {};
+  findRows_(SHEETS.ATTENDANCE, row => row.event_id === event.event_id)
+    .forEach(row => { attendanceIds[row.member_id] = true; });
+  const members = registeredMembersForEvent_(event.event_id)
+    .filter(member => !attendanceIds[member.member_id]);
+  const result = multicastLineText_(members.map(member => member.line_user_id), checkinReminderText_(event));
+  audit_("line_today_checkin_reminder", "trigger", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+  return { event: publicEvent_(event), sent: result.sent };
+}
+
 function adminAttendanceReport_(payload) {
   const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
   const events = rows_(SHEETS.EVENTS).sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
@@ -642,11 +740,173 @@ function eventRegistrationCounts_(registrations) {
   return counts;
 }
 
+function registeredMembersForEvent_(eventId) {
+  const memberById = {};
+  rows_(SHEETS.MEMBERS).filter(isParticipating_).forEach(member => {
+    if (member.line_user_id) memberById[member.member_id] = member;
+  });
+  const seen = {};
+  return registrationRows_()
+    .filter(row => row.event_id === eventId && row.status === "registered" && memberById[row.member_id])
+    .filter(row => {
+      if (seen[row.member_id]) return false;
+      seen[row.member_id] = true;
+      return true;
+    })
+    .map(row => memberById[row.member_id]);
+}
+
+function requireEvent_(eventId) {
+  const event = findOne_(SHEETS.EVENTS, "event_id", cleanText_(eventId, 60, "活動編號"));
+  if (!event) throw new Error("找不到活動");
+  return event;
+}
+
 function compareMemberOrder_(a, b) {
   return String(a.zone || "").localeCompare(String(b.zone || ""), "zh-Hant", { numeric: true })
     || String(a.division || "").localeCompare(String(b.division || ""), "zh-Hant", { numeric: true })
     || String(a.club || "").localeCompare(String(b.club || ""), "zh-Hant", { numeric: true })
     || String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", { numeric: true });
+}
+
+function lineChannelAccessToken_() {
+  return PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_ACCESS_TOKEN") || "";
+}
+
+function checkinUrl_() {
+  return PropertiesService.getScriptProperties().getProperty("CHECKIN_URL") || "https://liff.line.me/2010452724-MvUou0rS";
+}
+
+function adminLineUserIds_() {
+  return String(PropertiesService.getScriptProperties().getProperty("ADMIN_LINE_USER_IDS") || "")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function registrationInviteText_(event) {
+  return [
+    "2526會長聯誼會活動報名",
+    `${event.event_date} ${event.name}`,
+    "活動已開放報名，請點下方連結完成報名或取消報名：",
+    checkinUrl_()
+  ].join("\n");
+}
+
+function registrationConfirmationText_(event, member) {
+  return [
+    `${member.name || member.club + "會會長"}您好，您已完成活動報名。`,
+    `${event.event_date} ${event.name}`,
+    "如需取消報名，請回到活動頁操作：",
+    checkinUrl_()
+  ].join("\n");
+}
+
+function registrationCanceledText_(event, member) {
+  return [
+    `${member.name || member.club + "會會長"}您好，您已取消活動報名。`,
+    `${event.event_date} ${event.name}`,
+    "如需重新報名，請回到活動頁操作：",
+    checkinUrl_()
+  ].join("\n");
+}
+
+function eventReminderText_(event) {
+  return [
+    "2526會長聯誼會活動提醒",
+    `您已報名：${event.event_date} ${event.name}`,
+    "請記得準時出席。活動當天可由下方連結完成簽到：",
+    checkinUrl_()
+  ].join("\n");
+}
+
+function checkinReminderText_(event) {
+  return [
+    "2526會長聯誼會簽到提醒",
+    `${event.event_date} ${event.name}`,
+    "系統尚未看到您的簽到紀錄，請點下方連結完成簽到：",
+    checkinUrl_()
+  ].join("\n");
+}
+
+function officialAccountHelpText_() {
+  return [
+    "2526會長聯誼會服務中心",
+    "可由下方連結進行活動報名、取消報名與當日簽到：",
+    checkinUrl_(),
+    "",
+    "首次使用請先完成 LINE 身分綁定。"
+  ].join("\n");
+}
+
+function pushLineTextSafe_(lineUserId, text) {
+  try {
+    if (!lineUserId || !lineChannelAccessToken_()) return;
+    pushLineText_(lineUserId, text);
+  } catch (error) {
+    audit_("line_push_failed", "system", lineUserId || "", error.message);
+  }
+}
+
+function replyLineTextSafe_(replyToken, text) {
+  try {
+    if (!replyToken || !lineChannelAccessToken_()) return;
+    lineFetch_("/v2/bot/message/reply", {
+      replyToken,
+      messages: [{ type: "text", text: cleanText_(text, 5000, "訊息內容") }]
+    });
+  } catch (error) {
+    audit_("line_reply_failed", "system", replyToken || "", error.message);
+  }
+}
+
+function notifyAdminsSafe_(text) {
+  const ids = adminLineUserIds_();
+  if (!ids.length || !lineChannelAccessToken_()) return;
+  try {
+    multicastLineText_(ids, text);
+  } catch (error) {
+    audit_("line_admin_notify_failed", "system", "ADMIN_LINE_USER_IDS", error.message);
+  }
+}
+
+function pushLineText_(lineUserId, text) {
+  return lineFetch_("/v2/bot/message/push", {
+    to: lineUserId,
+    messages: [{ type: "text", text: cleanText_(text, 5000, "訊息內容") }]
+  });
+}
+
+function multicastLineText_(lineUserIds, text) {
+  const uniqueIds = Array.from(new Set(lineUserIds.filter(Boolean)));
+  if (!lineChannelAccessToken_()) throw new Error("尚未設定 LINE_CHANNEL_ACCESS_TOKEN");
+  const skipped = lineUserIds.length - uniqueIds.length;
+  let sent = 0;
+  for (let index = 0; index < uniqueIds.length; index += 500) {
+    const chunk = uniqueIds.slice(index, index + 500);
+    if (!chunk.length) continue;
+    lineFetch_("/v2/bot/message/multicast", {
+      to: chunk,
+      messages: [{ type: "text", text: cleanText_(text, 5000, "訊息內容") }]
+    });
+    sent += chunk.length;
+  }
+  return { sent, skipped };
+}
+
+function lineFetch_(path, payload) {
+  const response = UrlFetchApp.fetch(`https://api.line.me${path}`, {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: `Bearer ${lineChannelAccessToken_()}` },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  const code = response.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`LINE 推播失敗 (${code})：${response.getContentText()}`);
+  }
+  return response;
 }
 
 function expireStaleOpenEvents_() {

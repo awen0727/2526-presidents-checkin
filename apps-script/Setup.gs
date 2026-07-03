@@ -27,7 +27,9 @@ function setupSystem() {
   PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", spreadsheet.getId());
   SpreadsheetApp.getUi().alert(
     "獨立資料表已建立。\n\n接著請到「專案設定 → 指令碼屬性」設定：\n" +
-    "LINE_CHANNEL_ID、ADMIN_TOKEN、ROSTER_SPREADSHEET_ID。"
+    "LINE_CHANNEL_ID、ADMIN_TOKEN、ROSTER_SPREADSHEET_ID。\n\n" +
+    "若要啟用 LINE 官方帳號推播，請再設定 LINE_CHANNEL_ACCESS_TOKEN；" +
+    "CHECKIN_URL 可選填，預設使用目前 LIFF 簽到網址。"
   );
 }
 

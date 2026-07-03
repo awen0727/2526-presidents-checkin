@@ -34,6 +34,8 @@
 3. 末四碼符合時自動綁定 LINE；不符合時建立待審申請。
 4. 管理者由 `admin.html` 確認身分、修正電話並核准綁定。
 5. 已綁定的會長可以在活動開放期間完成簽到。
+6. 已綁定的會長可以在活動日前完成報名或取消報名。
+7. 若已設定 LINE 官方帳號權杖，系統可推播報名通知、活動提醒與簽到提醒。
 
 ## 管理中心
 
@@ -43,6 +45,8 @@
 - 現場代為簽到與撤銷誤簽
 - 簽到名單 CSV 匯出
 - 活動建立、開放與關閉
+- 活動報名名單查詢
+- LINE 官方帳號推播：報名通知、活動提醒、簽到提醒
 - 手機末四碼異常的身分審核
 - 會長電話修正與 LINE 綁定解除
 - 區分並篩選「今年參加／今年未參加」
@@ -57,11 +61,32 @@
 2. 將 `apps-script/` 內的檔案加入該 Apps Script 專案。
 3. 執行 `setupSystem()`，讓後端記住這份試算表；既有系統分頁與資料不會被清除。
 4. 在指令碼屬性設定 `LINE_CHANNEL_ID` 與 `ADMIN_TOKEN`。
-5. `Members` 已有 114 位會長，不需要再次匯入；日後原名冊更新時，才設定 `ROSTER_SPREADSHEET_ID` 為同一份試算表 ID 並執行 `importMembersFromSource()`。
-6. 執行 `createFirstEvent()` 建立第一場活動。
-7. 將 Apps Script 部署為網頁應用程式，再把網址與 LIFF ID 填入 `config.js`。
+5. 若要啟用 LINE 官方帳號推播，設定 `LINE_CHANNEL_ACCESS_TOKEN`。
+6. 可選填 `CHECKIN_URL`，預設使用 `https://liff.line.me/2010452724-MvUou0rS`。
+7. `Members` 已有 114 位會長，不需要再次匯入；日後原名冊更新時，才設定 `ROSTER_SPREADSHEET_ID` 為同一份試算表 ID 並執行 `importMembersFromSource()`。
+8. 執行 `createFirstEvent()` 建立第一場活動。
+9. 將 Apps Script 部署為網頁應用程式，再把網址與 LIFF ID 填入 `config.js`。
 
 `ADMIN_TOKEN` 請使用不易猜測的長字串。完整電話不會出現在 `data/members.json` 或公開前端回應中。
+
+## LINE 官方帳號
+
+官方帳號推播使用 LINE Messaging API。需在 Apps Script 指令碼屬性設定：
+
+- `LINE_CHANNEL_ACCESS_TOKEN`：Messaging API channel access token
+- `CHECKIN_URL`：會長端入口，可填 LIFF URL；未填時使用系統預設 LIFF URL
+- `ADMIN_LINE_USER_IDS`：選填，管理者 LINE userId，多位用逗號分隔；用於待審、報名、取消報名通知
+
+注意事項：
+
+- LIFF/Login channel 與 Messaging API channel 建議放在同一個 LINE Developers provider。
+- 會長必須加入或解除封鎖官方帳號，才收得到推播。
+- 報名與取消報名成功時，系統會嘗試發送個人確認訊息；若未設定權杖或對方未加入官方帳號，不會阻擋報名流程。
+- 後台活動管理可推播「報名通知」給所有已綁定會長、「活動提醒」給已報名者、「簽到提醒」給已報名但尚未簽到者。
+- 官方帳號 Webhook 可使用同一個 Apps Script 網頁應用程式網址；使用者輸入「報名、簽到、出席、活動、查詢」時會回覆會長端入口。
+- 可在 Apps Script 觸發條件新增時間驅動：
+  - `sendTomorrowEventReminders()`：活動前一天提醒已報名者
+  - `sendTodayCheckinReminders()`：活動當天提醒已報名但尚未簽到者
 
 ## 本機預覽
 
