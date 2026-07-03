@@ -7,7 +7,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-03-line-oa-9";
+const API_VERSION = "2526-presidents-2026-07-03-split-registration-checkin-10";
 
 function doGet(e) {
   try {
@@ -63,6 +63,7 @@ function route_(payload) {
     adminRejectBinding: adminRejectBinding_,
     adminCreateEvent: adminCreateEvent_,
     adminSetEventStatus: adminSetEventStatus_,
+    adminSetEventGate: adminSetEventGate_,
     adminDeleteEvent: adminDeleteEvent_,
     adminManualCheckIn: adminManualCheckIn_,
     adminRemoveAttendance: adminRemoveAttendance_,
@@ -302,7 +303,7 @@ function checkIn_(payload) {
 
 function adminOverview_() {
   const members = rows_(SHEETS.MEMBERS);
-  const events = rows_(SHEETS.EVENTS);
+  const events = eventRows_();
   const registrationCounts = eventRegistrationCounts_(registrationRows_());
   const openEvent = getOpenEvent_();
   const attendance = openEvent
@@ -336,6 +337,8 @@ function adminOverview_() {
       event_date: event.event_date,
       name: event.name,
       status: event.status,
+      registration_status: eventRegistrationStatus_(event),
+      checkin_status: eventCheckinStatus_(event),
       registration_count: registrationCounts[event.event_id] || 0
     })),
     attendance: attendance.map(row => ({
@@ -401,40 +404,67 @@ function adminRejectBinding_(payload) {
 }
 
 function adminCreateEvent_(payload) {
+  ensureEventGateColumns_();
   const name = cleanText_(payload.name, 100, "活動名稱");
   const eventDate = cleanText_(payload.eventDate, 10, "活動日期");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) throw new Error("活動日期格式不正確");
-  const shouldOpen = payload.open !== false;
-  if (shouldOpen) closeOpenEvents_();
+  const shouldOpenRegistration = payload.registrationOpen !== false;
+  const shouldOpenCheckin = payload.checkinOpen !== false;
+  if (shouldOpenCheckin) closeOpenEvents_();
   const eventId = id_("EV");
   append_(SHEETS.EVENTS, {
     event_id: eventId,
     event_date: eventDate,
     name,
-    status: shouldOpen ? "open" : "closed",
+    status: shouldOpenCheckin ? "open" : "closed",
+    registration_status: shouldOpenRegistration ? "open" : "closed",
+    checkin_status: shouldOpenCheckin ? "open" : "closed",
     created_at: now_()
   });
   audit_("event_created", "admin", eventId, `${eventDate} ${name}`);
-  return { message: shouldOpen ? "活動已建立並開放簽到" : "活動已建立" };
+  return { message: shouldOpenCheckin ? "活動已建立並開放簽到" : "活動已建立" };
 }
 
 function adminSetEventStatus_(payload) {
+  ensureEventGateColumns_();
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const status = String(payload.status || "");
   if (!["open", "closed"].includes(status)) throw new Error("活動狀態不正確");
   const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
   if (!event) throw new Error("找不到活動");
   if (status === "open") closeOpenEvents_();
-  updateRow_(SHEETS.EVENTS, event._row, { status });
+  updateRow_(SHEETS.EVENTS, event._row, { status, checkin_status: status });
   audit_("event_status_changed", "admin", eventId, status);
   return { message: status === "open" ? "活動已開放簽到" : "活動已關閉" };
 }
 
+function adminSetEventGate_(payload) {
+  ensureEventGateColumns_();
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const gate = String(payload.gate || "");
+  const status = String(payload.status || "");
+  if (!["registration", "checkin"].includes(gate)) throw new Error("活動開關類型不正確");
+  if (!["open", "closed"].includes(status)) throw new Error("活動狀態不正確");
+  const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+  if (!event) throw new Error("找不到活動");
+  if (gate === "checkin" && status === "open") closeOpenEvents_();
+  const changes = gate === "registration"
+    ? { registration_status: status }
+    : { checkin_status: status, status };
+  updateRow_(SHEETS.EVENTS, event._row, changes);
+  audit_("event_gate_changed", "admin", eventId, `${gate}:${status}`);
+  if (gate === "registration") return { message: status === "open" ? "活動已開放報名" : "活動已關閉報名" };
+  return { message: status === "open" ? "活動已開放簽到" : "活動已關閉簽到" };
+}
+
 function adminDeleteEvent_(payload) {
+  ensureEventGateColumns_();
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
   if (!event) throw new Error("找不到活動");
-  if (event.status === "open") throw new Error("請先關閉活動，再進行刪除");
+  if (eventRegistrationStatus_(event) === "open" || eventCheckinStatus_(event) === "open") {
+    throw new Error("請先關閉報名與簽到，再進行刪除");
+  }
 
   const attendanceRows = findRows_(SHEETS.ATTENDANCE, row => row.event_id === eventId)
     .map(row => row._row)
@@ -623,7 +653,7 @@ function sendTodayCheckinReminders() {
 
 function adminAttendanceReport_(payload) {
   const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
-  const events = rows_(SHEETS.EVENTS).sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
+  const events = eventRows_().sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
   const allAttendance = rows_(SHEETS.ATTENDANCE);
   const requestedEventId = String(payload.eventId || "");
   const selectedEvent = events.find(event => event.event_id === requestedEventId)
@@ -694,8 +724,26 @@ function adminAttendanceReport_(payload) {
 }
 
 function closeOpenEvents_() {
-  findRows_(SHEETS.EVENTS, row => row.status === "open").forEach(event => {
-    updateRow_(SHEETS.EVENTS, event._row, { status: "closed" });
+  eventRows_().filter(row => eventCheckinStatus_(row) === "open").forEach(event => {
+    updateRow_(SHEETS.EVENTS, event._row, { status: "closed", checkin_status: "closed" });
+  });
+}
+
+function eventRows_() {
+  ensureEventGateColumns_();
+  return rows_(SHEETS.EVENTS);
+}
+
+function ensureEventGateColumns_() {
+  const sheet = sheet_(SHEETS.EVENTS);
+  const required = ["registration_status", "checkin_status"];
+  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0].map(String);
+  let lastColumn = sheet.getLastColumn();
+  required.forEach(header => {
+    if (headers.includes(header)) return;
+    lastColumn += 1;
+    sheet.getRange(1, lastColumn).setValue(header);
+    sheet.getRange(1, lastColumn).setFontWeight("bold").setFontColor("#ffffff").setBackground("#163f73");
   });
 }
 
@@ -722,13 +770,21 @@ function ensureRegistrationSheet_() {
 
 function getRegisterableEvents_() {
   const today = today_();
-  return rows_(SHEETS.EVENTS)
+  return eventRows_()
     .filter(isEventRegisterable_)
     .sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
 }
 
 function isEventRegisterable_(event) {
-  return String((event && event.event_date) || "") >= today_();
+  return eventRegistrationStatus_(event) === "open" && String((event && event.event_date) || "") >= today_();
+}
+
+function eventRegistrationStatus_(event) {
+  return String(event.registration_status || "open");
+}
+
+function eventCheckinStatus_(event) {
+  return String(event.checkin_status || event.status || "closed");
 }
 
 function eventRegistrationCounts_(registrations) {
@@ -911,8 +967,8 @@ function lineFetch_(path, payload) {
 
 function expireStaleOpenEvents_() {
   const today = today_();
-  findRows_(SHEETS.EVENTS, row => row.status === "open" && String(row.event_date || "") < today).forEach(event => {
-    updateRow_(SHEETS.EVENTS, event._row, { status: "closed" });
+  eventRows_().filter(row => eventCheckinStatus_(row) === "open" && String(row.event_date || "") < today).forEach(event => {
+    updateRow_(SHEETS.EVENTS, event._row, { status: "closed", checkin_status: "closed" });
     audit_("event_auto_closed", "system", event.event_id, `expired on ${today}`);
   });
 }
@@ -990,7 +1046,7 @@ function publicEvent_(event) {
 function getOpenEvent_() {
   expireStaleOpenEvents_();
   const today = today_();
-  return findRows_(SHEETS.EVENTS, row => row.status === "open" && row.event_date === today)[0] || null;
+  return eventRows_().filter(row => eventCheckinStatus_(row) === "open" && row.event_date === today)[0] || null;
 }
 
 function maskPhone_(value) {

@@ -3,7 +3,7 @@
 
   const { config, post, showMessage, compareLabels } = window.PresidentsCheckin;
   const statusMessage = document.getElementById("statusMessage");
-  const panels = ["bindingPanel", "pendingPanel", "checkinPanel", "successPanel"];
+  const panels = ["bindingPanel", "pendingPanel", "memberHomePanel", "successPanel"];
   let idToken = "";
   let accessToken = "";
   let members = [];
@@ -58,7 +58,7 @@
       document.getElementById("checkinButton").disabled = session.participationInactive || !session.event || session.alreadyCheckedIn;
       document.getElementById("checkinButton").textContent = session.alreadyCheckedIn ? "本場已簽到" : "確認簽到";
       renderRegistrationEvents(session.registrationEvents || [], Boolean(session.participationInactive));
-      showPanel("checkinPanel");
+      showPanel("memberHomePanel");
       showMessage(statusMessage, session.participationInactive
         ? "今年未參加，無法簽到或報名"
         : session.alreadyCheckedIn ? "身分已確認，本場已簽到" : "LINE 身分已綁定",
@@ -75,10 +75,8 @@
   }
 
   function renderRegistrationEvents(events, disabled) {
-    const panel = document.getElementById("registrationPanel");
     const empty = document.getElementById("noRegistrationEvents");
     const list = document.getElementById("registrationList");
-    panel.classList.remove("hidden");
     list.replaceChildren();
     empty.classList.toggle("hidden", events.length > 0);
     events.forEach(item => {

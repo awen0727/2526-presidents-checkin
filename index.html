@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#163f73">
-  <title>2526會長聯誼會 LINE 簽到</title>
+  <title>2526會長聯誼會 活動報名與 LINE 簽到</title>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260626-registration8">
+  <link rel="stylesheet" href="styles.css?v=20260703-split10">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="config.js?v=20260703-lineoa9"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
-  <script src="checkin.js?v=20260626-registration8" defer></script>
+  <script src="checkin.js?v=20260703-split10" defer></script>
 </head>
 <body>
   <header class="hero">
     <img class="hero-logo" src="assets/annual-logo.jpg" alt="2025-2026年度 300A 2 官方 Logo">
     <div class="eyebrow">2526 Presidents Fellowship</div>
-    <h1>會長聯誼會 LINE 簽到</h1>
-    <p>會長本人登入，首次完成手機末四碼核對後即可使用。</p>
+    <h1>會長聯誼會活動報名與簽到</h1>
+    <p>會長本人登入後，可完成活動報名；簽到僅在活動當日開放。</p>
   </header>
 
   <main class="page-shell">
@@ -66,23 +66,29 @@
       <button id="pendingRefreshButton" class="secondary" type="button">重新確認狀態</button>
     </section>
 
-    <section id="checkinPanel" class="card hidden">
-      <div class="member-summary">
-        <span id="memberArea" class="badge"></span>
-        <h2 id="memberName"></h2>
-        <p id="memberClub" class="muted"></p>
-      </div>
-      <div id="eventBox" class="event-box"></div>
-      <button id="checkinButton" type="button">確認簽到</button>
-      <section id="registrationPanel" class="registration-panel hidden">
-        <div class="section-heading">
-          <div>
-            <h2>活動報名</h2>
-            <p class="muted">取代 LINE 接龍，可直接在這裡報名或取消報名。</p>
-          </div>
+    <section id="memberHomePanel" class="hidden">
+      <section class="card member-card">
+        <div class="member-summary">
+          <span id="memberArea" class="badge"></span>
+          <h2 id="memberName"></h2>
+          <p id="memberClub" class="muted"></p>
         </div>
+      </section>
+
+      <section id="registrationPanel" class="card registration-panel">
+        <div class="step-label">活動報名</div>
+        <h2>報名開放中的活動</h2>
+        <p class="muted">這裡取代 LINE 接龍，可直接報名或取消報名；報名不等於簽到。</p>
         <div id="noRegistrationEvents" class="empty-state">目前沒有開放報名的活動。</div>
         <div id="registrationList" class="registration-list"></div>
+      </section>
+
+      <section id="checkinPanel" class="card">
+        <div class="step-label">當日簽到</div>
+        <h2>今日活動簽到</h2>
+        <p class="muted">簽到只會在活動當日，且管理者開放簽到後才可使用。</p>
+        <div id="eventBox" class="event-box"></div>
+        <button id="checkinButton" type="button">確認簽到</button>
       </section>
     </section>
 

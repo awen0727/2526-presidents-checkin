@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260703-lineoa9">
+  <link rel="stylesheet" href="styles.css?v=20260703-split10">
   <script src="config.js?v=20260703-lineoa9"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260620-xlsx1" defer></script>
-  <script src="admin.js?v=20260703-lineoa9" defer></script>
+  <script src="admin.js?v=20260703-split10" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -105,7 +105,17 @@
             <label>活動日期<input id="eventDate" type="date"></label>
             <label>活動名稱<input id="eventName" maxlength="100" placeholder="例如：七月份會長聯誼會"></label>
           </div>
-          <button id="createEventButton" type="button">建立並開放簽到</button>
+          <div class="event-gate-options">
+            <label class="checkbox-card">
+              <input id="eventRegistrationOpen" type="checkbox" checked>
+              <span><strong>開放報名</strong><small>會長可先在前台報名或取消報名。</small></span>
+            </label>
+            <label class="checkbox-card">
+              <input id="eventCheckinOpen" type="checkbox">
+              <span><strong>開放簽到</strong><small>只在活動當日使用；開啟時會關閉其他簽到活動。</small></span>
+            </label>
+          </div>
+          <button id="createEventButton" type="button">建立活動</button>
         </section>
         <section class="card">
           <h2>活動紀錄</h2>

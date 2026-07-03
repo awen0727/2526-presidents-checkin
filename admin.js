@@ -94,6 +94,18 @@
     }).format(date);
   }
 
+  function eventRegistrationStatus(event) {
+    return String((event && event.registration_status) || "open");
+  }
+
+  function eventCheckinStatus(event) {
+    return String((event && event.checkin_status) || (event && event.status) || "closed");
+  }
+
+  function gateLabel(status) {
+    return status === "open" ? "開放中" : "已關閉";
+  }
+
   async function runAction(payload, confirmation) {
     if (confirmation && !window.confirm(confirmation)) return;
     showMessage(adminMessage, "處理中...", "");
@@ -186,10 +198,14 @@
       const info = makeElement("div", "manage-card-info");
       info.append(
         makeElement("strong", "", event.name),
-        makeElement("span", "muted", `${event.event_date} · ${event.status === "open" ? "簽到開放中" : "已關閉"} · ${event.registration_count || 0} 人已報名`)
+        makeElement(
+          "span",
+          "muted",
+          `${event.event_date} · 報名${gateLabel(eventRegistrationStatus(event))} · 簽到${gateLabel(eventCheckinStatus(event))} · ${event.registration_count || 0} 人已報名`
+        )
       );
-      const nextStatus = event.status === "open" ? "closed" : "open";
-      const label = event.status === "open" ? "關閉" : "重新開放";
+      const nextRegistrationStatus = eventRegistrationStatus(event) === "open" ? "closed" : "open";
+      const nextCheckinStatus = eventCheckinStatus(event) === "open" ? "closed" : "open";
       const actions = makeElement("div", "button-row");
       const registrationButton = makeButton("查看報名", "secondary compact-button", () => {
         openEventRegistrations(event).catch(error => showMessage(adminMessage, error.message, "error"));
@@ -209,21 +225,36 @@
         sendLineAction(event, "adminSendCheckinReminder", "確定推播簽到提醒給已報名但尚未簽到者嗎？")
           .catch(error => showMessage(adminMessage, error.message, "error"));
       });
-      const statusButton = makeButton(label, "secondary compact-button", () => {
-        runAction(
-          { action: "adminSetEventStatus", eventId: event.event_id, status: nextStatus },
-          `確定${label}「${event.name}」嗎？`
-        ).catch(error => showMessage(adminMessage, error.message, "error"));
-      });
+      const registrationStatusButton = makeButton(
+        eventRegistrationStatus(event) === "open" ? "關閉報名" : "開放報名",
+        "secondary compact-button",
+        () => {
+          runAction(
+            { action: "adminSetEventGate", eventId: event.event_id, gate: "registration", status: nextRegistrationStatus },
+            `確定${nextRegistrationStatus === "open" ? "開放" : "關閉"}「${event.name}」的報名嗎？`
+          ).catch(error => showMessage(adminMessage, error.message, "error"));
+        }
+      );
+      const checkinStatusButton = makeButton(
+        eventCheckinStatus(event) === "open" ? "關閉簽到" : "開放簽到",
+        "secondary compact-button",
+        () => {
+          runAction(
+            { action: "adminSetEventGate", eventId: event.event_id, gate: "checkin", status: nextCheckinStatus },
+            `確定${nextCheckinStatus === "open" ? "開放" : "關閉"}「${event.name}」的簽到嗎？${nextCheckinStatus === "open" ? "\n\n其他開放中的簽到活動會自動關閉。" : ""}`
+          ).catch(error => showMessage(adminMessage, error.message, "error"));
+        }
+      );
       const deleteButton = makeButton("刪除", "danger secondary compact-button", () => {
         runAction(
           { action: "adminDeleteEvent", eventId: event.event_id },
           `確定永久刪除「${event.name}」嗎？\n\n該活動的所有簽到紀錄也會一起刪除，且無法復原。`
         ).catch(error => showMessage(adminMessage, error.message, "error"));
       });
-      deleteButton.disabled = event.status === "open";
-      deleteButton.title = event.status === "open" ? "請先關閉活動才能刪除" : "永久刪除活動及該場簽到紀錄";
-      actions.append(registrationButton, attendanceButton, inviteButton, reminderButton, checkinReminderButton, statusButton, deleteButton);
+      const eventHasOpenGate = eventRegistrationStatus(event) === "open" || eventCheckinStatus(event) === "open";
+      deleteButton.disabled = eventHasOpenGate;
+      deleteButton.title = eventHasOpenGate ? "請先關閉報名與簽到才能刪除" : "永久刪除活動及該場簽到紀錄";
+      actions.append(registrationButton, attendanceButton, inviteButton, reminderButton, checkinReminderButton, registrationStatusButton, checkinStatusButton, deleteButton);
       card.append(info, actions);
       list.appendChild(card);
     });
@@ -715,17 +746,19 @@
   document.getElementById("toggleEventButton").addEventListener("click", () => {
     if (!state.currentEvent) return;
     runAction(
-      { action: "adminSetEventStatus", eventId: state.currentEvent.event_id, status: "closed" },
+      { action: "adminSetEventGate", eventId: state.currentEvent.event_id, gate: "checkin", status: "closed" },
       `確定關閉「${state.currentEvent.name}」的簽到嗎？`
     ).catch(error => showMessage(adminMessage, error.message, "error"));
   });
   document.getElementById("createEventButton").addEventListener("click", () => {
     const name = document.getElementById("eventName").value.trim();
     const eventDate = document.getElementById("eventDate").value;
+    const registrationOpen = document.getElementById("eventRegistrationOpen").checked;
+    const checkinOpen = document.getElementById("eventCheckinOpen").checked;
     if (!name || !eventDate) return showMessage(adminMessage, "請填寫活動日期與名稱", "error");
     runAction(
-      { action: "adminCreateEvent", name, eventDate, open: true },
-      `建立並開放「${name}」？目前開放中的活動會自動關閉。`
+      { action: "adminCreateEvent", name, eventDate, registrationOpen, checkinOpen },
+      `建立「${name}」？${checkinOpen ? "\n\n目前開放中的簽到活動會自動關閉。" : ""}`
     ).then(() => { document.getElementById("eventName").value = ""; })
       .catch(error => showMessage(adminMessage, error.message, "error"));
   });
@@ -766,8 +799,8 @@
       boundCount: 38,
       currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
       events: [
-        { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會", status: "open", registration_count: 2 },
-        { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會", status: "closed", registration_count: 1 }
+        { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會", status: "open", registration_status: "closed", checkin_status: "open", registration_count: 2 },
+        { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會", status: "closed", registration_status: "open", checkin_status: "closed", registration_count: 1 }
       ],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [
