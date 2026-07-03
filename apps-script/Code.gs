@@ -7,7 +7,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-04-event-time-gates-11";
+const API_VERSION = "2526-presidents-2026-07-04-manual-checkin-open-12";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -850,7 +850,7 @@ function isCheckinAvailable_(event) {
   if (!event || !event.event_date) return false;
   if (eventCheckinStatus_(event) !== "open") return false;
   const now = nowDate_().getTime();
-  return now >= checkinOpenAt_(event).getTime() && now <= eventCloseAt_(event).getTime();
+  return now <= eventCloseAt_(event).getTime();
 }
 
 function eventRegistrationCounts_(registrations) {
