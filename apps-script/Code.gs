@@ -7,7 +7,11 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-03-split-registration-checkin-10";
+const API_VERSION = "2526-presidents-2026-07-04-event-time-gates-11";
+
+const DEFAULT_EVENT_TIME = "18:00";
+const REGISTRATION_CUTOFF_MINUTES = 90;
+const CHECKIN_OPEN_MINUTES = 60;
 
 function doGet(e) {
   try {
@@ -86,6 +90,7 @@ function route_(payload) {
 }
 
 function getSession_(payload) {
+  expireStaleOpenEvents_();
   const line = verifyLineIdentity_(payload);
   const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
   const participating = Boolean(member && isParticipating_(member));
@@ -121,6 +126,7 @@ function getRoster_() {
 }
 
 function dashboard_() {
+  expireStaleOpenEvents_();
   const event = getOpenEvent_();
   const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
   if (!event) {
@@ -302,6 +308,7 @@ function checkIn_(payload) {
 }
 
 function adminOverview_() {
+  expireStaleOpenEvents_();
   const members = rows_(SHEETS.MEMBERS);
   const events = eventRows_();
   const registrationCounts = eventRegistrationCounts_(registrationRows_());
@@ -335,6 +342,7 @@ function adminOverview_() {
     events: events.map(event => ({
       event_id: event.event_id,
       event_date: event.event_date,
+      event_time: eventTime_(event),
       name: event.name,
       status: event.status,
       registration_status: eventRegistrationStatus_(event),
@@ -404,29 +412,34 @@ function adminRejectBinding_(payload) {
 }
 
 function adminCreateEvent_(payload) {
-  ensureEventGateColumns_();
+  ensureEventColumns_();
   const name = cleanText_(payload.name, 100, "活動名稱");
   const eventDate = cleanText_(payload.eventDate, 10, "活動日期");
+  const eventTime = cleanEventTime_(payload.eventTime || DEFAULT_EVENT_TIME);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) throw new Error("活動日期格式不正確");
-  const shouldOpenRegistration = payload.registrationOpen !== false;
-  const shouldOpenCheckin = payload.checkinOpen !== false;
+  const eventForTiming = { event_date: eventDate, event_time: eventTime };
+  const shouldOpenRegistration = payload.registrationOpen !== false
+    && nowDate_().getTime() < registrationDeadline_(eventForTiming).getTime();
+  const shouldOpenCheckin = payload.checkinOpen !== false
+    && nowDate_().getTime() <= eventCloseAt_(eventForTiming).getTime();
   if (shouldOpenCheckin) closeOpenEvents_();
   const eventId = id_("EV");
   append_(SHEETS.EVENTS, {
     event_id: eventId,
     event_date: eventDate,
+    event_time: eventTime,
     name,
     status: shouldOpenCheckin ? "open" : "closed",
     registration_status: shouldOpenRegistration ? "open" : "closed",
     checkin_status: shouldOpenCheckin ? "open" : "closed",
     created_at: now_()
   });
-  audit_("event_created", "admin", eventId, `${eventDate} ${name}`);
+  audit_("event_created", "admin", eventId, `${eventDate} ${eventTime} ${name}`);
   return { message: shouldOpenCheckin ? "活動已建立並開放簽到" : "活動已建立" };
 }
 
 function adminSetEventStatus_(payload) {
-  ensureEventGateColumns_();
+  ensureEventColumns_();
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const status = String(payload.status || "");
   if (!["open", "closed"].includes(status)) throw new Error("活動狀態不正確");
@@ -439,7 +452,7 @@ function adminSetEventStatus_(payload) {
 }
 
 function adminSetEventGate_(payload) {
-  ensureEventGateColumns_();
+  ensureEventColumns_();
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const gate = String(payload.gate || "");
   const status = String(payload.status || "");
@@ -447,6 +460,12 @@ function adminSetEventGate_(payload) {
   if (!["open", "closed"].includes(status)) throw new Error("活動狀態不正確");
   const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
   if (!event) throw new Error("找不到活動");
+  if (gate === "registration" && status === "open" && nowDate_().getTime() >= registrationDeadline_(event).getTime()) {
+    throw new Error("此活動已超過報名截止時間，無法重新開放報名");
+  }
+  if (gate === "checkin" && status === "open" && nowDate_().getTime() > eventCloseAt_(event).getTime()) {
+    throw new Error("此活動已過期，無法重新開放簽到");
+  }
   if (gate === "checkin" && status === "open") closeOpenEvents_();
   const changes = gate === "registration"
     ? { registration_status: status }
@@ -458,7 +477,7 @@ function adminSetEventGate_(payload) {
 }
 
 function adminDeleteEvent_(payload) {
-  ensureEventGateColumns_();
+  ensureEventColumns_();
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
   if (!event) throw new Error("找不到活動");
@@ -730,13 +749,13 @@ function closeOpenEvents_() {
 }
 
 function eventRows_() {
-  ensureEventGateColumns_();
+  ensureEventColumns_();
   return rows_(SHEETS.EVENTS);
 }
 
-function ensureEventGateColumns_() {
+function ensureEventColumns_() {
   const sheet = sheet_(SHEETS.EVENTS);
-  const required = ["registration_status", "checkin_status"];
+  const required = ["event_time", "registration_status", "checkin_status"];
   const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0].map(String);
   let lastColumn = sheet.getLastColumn();
   required.forEach(header => {
@@ -769,14 +788,16 @@ function ensureRegistrationSheet_() {
 }
 
 function getRegisterableEvents_() {
-  const today = today_();
+  expireStaleOpenEvents_();
   return eventRows_()
     .filter(isEventRegisterable_)
-    .sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
+    .sort((a, b) => eventStart_(a).getTime() - eventStart_(b).getTime());
 }
 
 function isEventRegisterable_(event) {
-  return eventRegistrationStatus_(event) === "open" && String((event && event.event_date) || "") >= today_();
+  if (!event || !event.event_date) return false;
+  if (eventRegistrationStatus_(event) !== "open") return false;
+  return nowDate_().getTime() < registrationDeadline_(event).getTime();
 }
 
 function eventRegistrationStatus_(event) {
@@ -785,6 +806,51 @@ function eventRegistrationStatus_(event) {
 
 function eventCheckinStatus_(event) {
   return String(event.checkin_status || event.status || "closed");
+}
+
+function eventTime_(event) {
+  return cleanEventTime_((event && event.event_time) || DEFAULT_EVENT_TIME);
+}
+
+function cleanEventTime_(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text) return DEFAULT_EVENT_TIME;
+  const match = text.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!match) throw new Error("活動時間格式不正確，請使用 HH:mm");
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function eventStart_(event) {
+  const date = String((event && event.event_date) || "");
+  const time = eventTime_(event);
+  const parsed = new Date(`${date}T${time}:00+08:00`);
+  if (Number.isNaN(parsed.getTime())) throw new Error("活動日期或時間格式不正確");
+  return parsed;
+}
+
+function registrationDeadline_(event) {
+  return new Date(eventStart_(event).getTime() - REGISTRATION_CUTOFF_MINUTES * 60 * 1000);
+}
+
+function checkinOpenAt_(event) {
+  return new Date(eventStart_(event).getTime() - CHECKIN_OPEN_MINUTES * 60 * 1000);
+}
+
+function eventCloseAt_(event) {
+  const parsed = new Date(`${event.event_date}T23:59:59+08:00`);
+  if (Number.isNaN(parsed.getTime())) throw new Error("活動日期格式不正確");
+  return parsed;
+}
+
+function nowDate_() {
+  return new Date();
+}
+
+function isCheckinAvailable_(event) {
+  if (!event || !event.event_date) return false;
+  if (eventCheckinStatus_(event) !== "open") return false;
+  const now = nowDate_().getTime();
+  return now >= checkinOpenAt_(event).getTime() && now <= eventCloseAt_(event).getTime();
 }
 
 function eventRegistrationCounts_(registrations) {
@@ -966,10 +1032,21 @@ function lineFetch_(path, payload) {
 }
 
 function expireStaleOpenEvents_() {
-  const today = today_();
-  eventRows_().filter(row => eventCheckinStatus_(row) === "open" && String(row.event_date || "") < today).forEach(event => {
-    updateRow_(SHEETS.EVENTS, event._row, { status: "closed", checkin_status: "closed" });
-    audit_("event_auto_closed", "system", event.event_id, `expired on ${today}`);
+  ensureEventColumns_();
+  const now = nowDate_().getTime();
+  rows_(SHEETS.EVENTS).forEach(event => {
+    if (!event.event_id || !event.event_date) return;
+    const changes = {};
+    if (eventRegistrationStatus_(event) === "open" && now >= registrationDeadline_(event).getTime()) {
+      changes.registration_status = "closed";
+    }
+    if (eventCheckinStatus_(event) === "open" && now > eventCloseAt_(event).getTime()) {
+      changes.status = "closed";
+      changes.checkin_status = "closed";
+    }
+    if (!Object.keys(changes).length) return;
+    updateRow_(SHEETS.EVENTS, event._row, changes);
+    audit_("event_auto_closed", "system", event.event_id, JSON.stringify(changes));
   });
 }
 
@@ -1040,13 +1117,14 @@ function isParticipating_(member) {
 }
 
 function publicEvent_(event) {
-  return { event_id: event.event_id, event_date: event.event_date, name: event.name };
+  return { event_id: event.event_id, event_date: event.event_date, event_time: eventTime_(event), name: event.name };
 }
 
 function getOpenEvent_() {
   expireStaleOpenEvents_();
-  const today = today_();
-  return eventRows_().filter(row => eventCheckinStatus_(row) === "open" && row.event_date === today)[0] || null;
+  return eventRows_()
+    .filter(isCheckinAvailable_)
+    .sort((a, b) => eventStart_(a).getTime() - eventStart_(b).getTime())[0] || null;
 }
 
 function maskPhone_(value) {
@@ -1103,9 +1181,14 @@ function findOne_(name, key, value) {
 }
 
 function append_(name, data) {
-  const headers = SCHEMA[name];
+  const sheet = sheet_(name);
+  const fallbackHeaders = SCHEMA[name];
+  if (!fallbackHeaders) throw new Error(`未定義資料表：${name}`);
+  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), fallbackHeaders.length)).getDisplayValues()[0]
+    .map(String)
+    .filter(Boolean);
   if (!headers) throw new Error(`未定義資料表：${name}`);
-  sheet_(name).appendRow(headers.map(header => data[header] == null ? "" : data[header]));
+  sheet.appendRow(headers.map(header => data[header] == null ? "" : data[header]));
 }
 
 function updateRow_(name, rowNumber, changes) {

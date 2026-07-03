@@ -1,7 +1,7 @@
 const SCHEMA = Object.freeze({
   Members: ["member_id", "zone", "division", "club", "name", "phone", "status", "line_user_id", "line_display_name", "updated_at"],
   BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
-  Events: ["event_id", "event_date", "name", "status", "registration_status", "checkin_status", "created_at"],
+  Events: ["event_id", "event_date", "event_time", "name", "status", "registration_status", "checkin_status", "created_at"],
   EventRegistrations: ["registration_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "status", "registered_at", "canceled_at", "source"],
   Attendance: ["attendance_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "checkin_at", "source"],
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
@@ -87,6 +87,7 @@ function createFirstEvent() {
   append_("Events", {
     event_id: id_("EV"),
     event_date: Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd"),
+    event_time: "18:00",
     name: eventName,
     status: "open",
     registration_status: "open",

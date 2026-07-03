@@ -38,6 +38,11 @@
     }).format(date);
   }
 
+  function formatEventMeta(event) {
+    if (!event) return "";
+    return `${formatEventDate(event.event_date)} ${event.event_time || ""}`.trim();
+  }
+
   async function loadRoster() {
     const result = await post({ action: "getRoster" });
     members = result.members || [];
@@ -53,7 +58,7 @@
       document.getElementById("eventBox").textContent = session.participationInactive
         ? "目前列為今年未參加，若資料有誤請聯絡管理者。"
         : session.event
-        ? `${session.event.event_date}｜${session.event.name}`
+        ? `${formatEventMeta(session.event)}｜${session.event.name}`
         : "目前沒有開放簽到的活動";
       document.getElementById("checkinButton").disabled = session.participationInactive || !session.event || session.alreadyCheckedIn;
       document.getElementById("checkinButton").textContent = session.alreadyCheckedIn ? "本場已簽到" : "確認簽到";
@@ -88,7 +93,7 @@
       title.textContent = item.name;
       const meta = document.createElement("span");
       meta.className = "muted";
-      meta.textContent = formatEventDate(item.event_date);
+      meta.textContent = formatEventMeta(item);
       const state = document.createElement("span");
       state.className = item.registered ? "badge success-badge" : "badge";
       state.textContent = item.registered ? "已報名" : "尚未報名";
@@ -197,10 +202,10 @@
       document.getElementById("profilePanel").classList.remove("hidden");
       renderSession({
         member: members[0],
-        event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
+        event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會" },
         registrationEvents: [
-          { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會", registered: true },
-          { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會", registered: false }
+          { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會", registered: true },
+          { event_id: "EV-NEXT", event_date: "2026-07-18", event_time: "18:00", name: "七月份會長聯誼會", registered: false }
         ],
         alreadyCheckedIn: false,
         participationInactive: false,

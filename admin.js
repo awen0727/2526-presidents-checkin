@@ -106,6 +106,10 @@
     return status === "open" ? "開放中" : "已關閉";
   }
 
+  function eventMeta(event) {
+    return [event.event_date, event.event_time].filter(Boolean).join(" ");
+  }
+
   async function runAction(payload, confirmation) {
     if (confirmation && !window.confirm(confirmation)) return;
     showMessage(adminMessage, "處理中...", "");
@@ -127,7 +131,7 @@
     const toggle = document.getElementById("toggleEventButton");
     if (state.currentEvent) {
       currentName.textContent = state.currentEvent.name;
-      currentMeta.textContent = state.currentEvent.event_date;
+      currentMeta.textContent = eventMeta(state.currentEvent);
       badge.textContent = "簽到開放中";
       badge.className = "badge success-badge";
       toggle.classList.remove("hidden");
@@ -201,7 +205,7 @@
         makeElement(
           "span",
           "muted",
-          `${event.event_date} · 報名${gateLabel(eventRegistrationStatus(event))} · 簽到${gateLabel(eventCheckinStatus(event))} · ${event.registration_count || 0} 人已報名`
+          `${eventMeta(event)} · 報名${gateLabel(eventRegistrationStatus(event))} · 簽到${gateLabel(eventCheckinStatus(event))} · ${event.registration_count || 0} 人已報名`
         )
       );
       const nextRegistrationStatus = eventRegistrationStatus(event) === "open" ? "closed" : "open";
@@ -421,7 +425,7 @@
       ? event.name
       : "目前沒有開放簽到的活動";
     document.getElementById("dashboardEventMeta").textContent = event
-      ? event.event_date
+      ? eventMeta(event)
       : "開放活動後，此區會自動顯示即時出席狀況。";
     document.getElementById("dashboardTotal").textContent = totalCount;
     document.getElementById("dashboardAttended").textContent = attendedCount;
@@ -439,7 +443,7 @@
     select.replaceChildren();
     if (!report.events.length) select.appendChild(new Option("尚無活動", ""));
     report.events.forEach(event => select.appendChild(new Option(
-      `${event.event_date}｜${event.name}`,
+      `${eventMeta(event)}｜${event.name}`,
       event.event_id,
       false,
       Boolean(report.selectedEvent && event.event_id === report.selectedEvent.event_id)
@@ -465,7 +469,7 @@
     const query = document.getElementById("reportMemberSearch").value.trim().toLowerCase();
     const status = document.getElementById("reportStatusFilter").value;
     document.getElementById("reportSelectedEventName").textContent = event ? event.name : "尚無活動";
-    document.getElementById("reportSelectedEventMeta").textContent = event ? event.event_date : "";
+    document.getElementById("reportSelectedEventMeta").textContent = event ? eventMeta(event) : "";
     const attended = report.selectedEventMembers.filter(member => member.attended).length;
     document.getElementById("reportSelectedEventBadge").textContent = event ? `已出席 ${attended}／${report.selectedEventMembers.length}` : "";
     const rows = document.getElementById("reportEventRows");
@@ -644,7 +648,7 @@
     const card = document.getElementById("registrationReportCard");
     const rows = document.getElementById("registrationRows");
     document.getElementById("registrationReportTitle").textContent = `${result.event.name} 報名名單`;
-    document.getElementById("registrationReportMeta").textContent = result.event.event_date;
+    document.getElementById("registrationReportMeta").textContent = eventMeta(result.event);
     document.getElementById("registrationReportBadge").textContent = `已報名 ${result.total} 人`;
     rows.replaceChildren();
     (result.registrants || []).forEach(person => {
@@ -753,11 +757,12 @@
   document.getElementById("createEventButton").addEventListener("click", () => {
     const name = document.getElementById("eventName").value.trim();
     const eventDate = document.getElementById("eventDate").value;
+    const eventTime = document.getElementById("eventTime").value || "18:00";
     const registrationOpen = document.getElementById("eventRegistrationOpen").checked;
     const checkinOpen = document.getElementById("eventCheckinOpen").checked;
-    if (!name || !eventDate) return showMessage(adminMessage, "請填寫活動日期與名稱", "error");
+    if (!name || !eventDate || !eventTime) return showMessage(adminMessage, "請填寫活動日期、時間與名稱", "error");
     runAction(
-      { action: "adminCreateEvent", name, eventDate, registrationOpen, checkinOpen },
+      { action: "adminCreateEvent", name, eventDate, eventTime, registrationOpen, checkinOpen },
       `建立「${name}」？${checkinOpen ? "\n\n目前開放中的簽到活動會自動關閉。" : ""}`
     ).then(() => { document.getElementById("eventName").value = ""; })
       .catch(error => showMessage(adminMessage, error.message, "error"));
@@ -797,10 +802,10 @@
       memberCount: 114,
       notParticipatingCount: 1,
       boundCount: 38,
-      currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
+      currentEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會" },
       events: [
-        { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會", status: "open", registration_status: "closed", checkin_status: "open", registration_count: 2 },
-        { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會", status: "closed", registration_status: "open", checkin_status: "closed", registration_count: 1 }
+        { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會", status: "open", registration_status: "closed", checkin_status: "open", registration_count: 2 },
+        { event_id: "EV-NEXT", event_date: "2026-07-18", event_time: "18:00", name: "七月份會長聯誼會", status: "closed", registration_status: "open", checkin_status: "closed", registration_count: 1 }
       ],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [
@@ -810,7 +815,7 @@
       lineOfficial: { configured: true, boundCount: 38, checkinUrl: "https://liff.line.me/2010452724-MvUou0rS" },
       registrationReports: {
         "EV-PREVIEW": {
-          event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", name: "六月會長聯誼會" },
+          event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會" },
           total: 2,
           registrants: [
             { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", registered_at: new Date().toISOString(), source: "LINE" },
@@ -818,7 +823,7 @@
           ]
         },
         "EV-NEXT": {
-          event: { event_id: "EV-NEXT", event_date: "2026-07-18", name: "七月份會長聯誼會" },
+          event: { event_id: "EV-NEXT", event_date: "2026-07-18", event_time: "18:00", name: "七月份會長聯誼會" },
           total: 1,
           registrants: [
             { member_id: "P2526-003", zone: "第二專區", division: "第3分區", club: "示範", name: "示範會長", registered_at: new Date(Date.now() - 7200000).toISOString(), source: "LINE" }
@@ -827,8 +832,8 @@
       }
     };
     report = {
-      events: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" }],
-      selectedEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-20", name: "系統測試" },
+      events: [{ event_id: "EV-PREVIEW", event_date: "2026-06-20", event_time: "18:00", name: "系統測試" }],
+      selectedEvent: { event_id: "EV-PREVIEW", event_date: "2026-06-20", event_time: "18:00", name: "系統測試" },
       selectedEventMembers: [
         { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", attended: true, checkin_at: new Date().toISOString(), source: "LINE" },
         { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", attended: false, checkin_at: "", source: "" }
