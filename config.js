@@ -1,4 +1,4 @@
 window.PRESIDENTS_CHECKIN_CONFIG = {
-  apiUrl: "https://script.google.com/macros/s/AKfycbwW2OkxetkmT_pjEglLAV70DwC0Pm6etY3sI1UWQ3MmqQk-C7OzHceuHqxBv3i895l4/exec",
+  apiUrl: "https://script.google.com/macros/s/AKfycbxNRvrKkZYCXLl8lHdSda34_uW1OZHQhXHVni_7YV7V8lyNQTysFD8PJXpijn4zW9Fr/exec",
   liffId: "2010452724-MvUou0rS"
 };
