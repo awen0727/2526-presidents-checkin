@@ -7,7 +7,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-04-line-user-id-14";
+const API_VERSION = "2526-presidents-2026-07-04-admin-line-id-15";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -373,6 +373,7 @@ function adminOverview_() {
       masked_phone: maskPhone_(member.phone),
       participating: isParticipating_(member),
       bound: Boolean(member.line_user_id),
+      line_user_id: member.line_user_id || "",
       line_display_name: member.line_display_name || ""
     }))
   };

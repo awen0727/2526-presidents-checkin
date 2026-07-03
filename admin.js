@@ -386,7 +386,10 @@
         makeElement("span", member.participating ? "participating-state" : "not-participating-state", member.participating ? "今年參加" : "今年未參加"),
         makeElement("span", member.bound ? "bound-state" : "unbound-state", member.bound
           ? `LINE 已綁定：${member.line_display_name || "名稱未記錄"}`
-          : "LINE 未綁定")
+          : "LINE 未綁定"),
+        makeElement("span", "line-user-id", member.bound
+          ? `LINE ID：${member.line_user_id || "未記錄"}`
+          : "LINE ID：未綁定")
       );
       heading.append(info, makeElement("span", "masked-phone", member.masked_phone || "電話未設定"));
       const controls = makeElement("div", "member-controls");
@@ -876,8 +879,8 @@
       ],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [
-        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_display_name: "LINE 預覽" },
-        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_display_name: "" }
+        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_user_id: "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", line_display_name: "LINE 預覽" },
+        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_user_id: "", line_display_name: "" }
       ],
       lineOfficial: { configured: true, boundCount: 38, checkinUrl: "https://liff.line.me/2010452724-MvUou0rS" },
       registrationReports: {

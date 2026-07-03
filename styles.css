@@ -163,6 +163,7 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 .bound-state, .unbound-state { font-size: .84rem; font-weight: 700; }
 .bound-state { color: var(--success); }
 .unbound-state { color: var(--muted); }
+.line-user-id { max-width: 100%; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; line-height: 1.4; word-break: break-all; }
 .participating-state, .not-participating-state { width: fit-content; padding: 3px 7px; border-radius: 999px; font-size: .78rem; font-weight: 800; }
 .participating-state { color: var(--success); background: #dbf4ea; }
 .not-participating-state { color: #7a4b05; background: #fff3dc; }
