@@ -157,8 +157,44 @@
     badge.textContent = status.configured ? "推播可用" : "尚未設定";
     badge.className = status.configured ? "badge success-badge" : "badge warning-badge";
     text.textContent = status.configured
-      ? `已設定 LINE_CHANNEL_ACCESS_TOKEN；目前可推播綁定會長 ${status.boundCount || 0} 位。`
+      ? `已設定 LINE_CHANNEL_ACCESS_TOKEN；可推播綁定會長 ${status.boundCount || 0} 位，已啟用群組 ${status.enabledGroupCount || 0} 個。`
       : "尚未設定 LINE_CHANNEL_ACCESS_TOKEN；報名功能可用，但官方帳號推播按鈕會失敗。";
+    renderLineGroups(status.groups || []);
+  }
+
+  function renderLineGroups(groups) {
+    const list = document.getElementById("lineGroupList");
+    const empty = document.getElementById("noLineGroups");
+    if (!list || !empty) return;
+    list.replaceChildren();
+    empty.classList.toggle("hidden", groups.length > 0);
+    groups.forEach(group => {
+      const card = makeElement("article", "manage-card line-group-card");
+      const info = makeElement("div", "manage-card-info");
+      const enabled = group.status !== "disabled";
+      info.append(
+        makeElement("strong", "", group.group_name || "未命名群組"),
+        makeElement("span", enabled ? "status-open" : "status-closed", enabled ? "啟用中" : "已停用"),
+        makeElement("span", "line-user-id", group.group_id || ""),
+        makeElement("span", "muted", `類型：${group.group_type || "group"} · 更新：${formatDateTime(group.updated_at || group.created_at) || "未記錄"}`)
+      );
+      const actions = makeElement("div", "button-row");
+      const toggle = makeButton(enabled ? "停用" : "啟用", "secondary compact-button", () => {
+        runAction(
+          { action: "adminSetLineGroupStatus", groupId: group.group_id, status: enabled ? "disabled" : "enabled" },
+          `確定${enabled ? "停用" : "啟用"}「${group.group_name || "此群組"}」嗎？`
+        ).catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      const remove = makeButton("刪除", "danger secondary compact-button", () => {
+        runAction(
+          { action: "adminDeleteLineGroup", groupId: group.group_id },
+          `確定刪除「${group.group_name || "此群組"}」嗎？\n\n刪除後需重新在群組輸入綁定指令。`
+        ).catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      actions.append(toggle, remove);
+      card.append(info, actions);
+      list.appendChild(card);
+    });
   }
 
   function renderManualMembers() {
@@ -239,6 +275,18 @@
         sendLineAction(event, "adminSendCheckinReminder", "確定推播簽到提醒給已報名但尚未簽到者嗎？")
           .catch(error => showMessage(adminMessage, error.message, "error"));
       });
+      const groupInviteButton = makeButton("群組報名", "secondary compact-button", () => {
+        sendLineAction(event, "adminSendGroupRegistrationInvite", `確定推播報名通知到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
+          .catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      const groupReminderButton = makeButton("群組活動提醒", "secondary compact-button", () => {
+        sendLineAction(event, "adminSendGroupEventReminder", `確定推播活動提醒到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
+          .catch(error => showMessage(adminMessage, error.message, "error"));
+      });
+      const groupCheckinButton = makeButton("群組簽到提醒", "secondary compact-button", () => {
+        sendLineAction(event, "adminSendGroupCheckinReminder", `確定推播簽到提醒到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
+          .catch(error => showMessage(adminMessage, error.message, "error"));
+      });
       const registrationStatusButton = makeButton(
         eventRegistrationStatus(event) === "open" ? "關閉報名" : "開放報名",
         "secondary compact-button",
@@ -268,7 +316,7 @@
       const eventHasOpenGate = eventRegistrationStatus(event) === "open" || eventCheckinStatus(event) === "open";
       deleteButton.disabled = eventHasOpenGate;
       deleteButton.title = eventHasOpenGate ? "請先關閉報名與簽到才能刪除" : "永久刪除活動及該場簽到紀錄";
-      actions.append(registrationButton, attendanceButton, inviteButton, reminderButton, checkinReminderButton, registrationStatusButton, checkinStatusButton, deleteButton);
+      actions.append(registrationButton, attendanceButton, inviteButton, reminderButton, checkinReminderButton, groupInviteButton, groupReminderButton, groupCheckinButton, registrationStatusButton, checkinStatusButton, deleteButton);
       card.append(info, actions);
       list.appendChild(card);
     });
@@ -882,7 +930,16 @@
         { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_user_id: "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", line_display_name: "LINE 預覽" },
         { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_user_id: "", line_display_name: "" }
       ],
-      lineOfficial: { configured: true, boundCount: 38, checkinUrl: "https://liff.line.me/2010452724-MvUou0rS" },
+      lineOfficial: {
+        configured: true,
+        boundCount: 38,
+        enabledGroupCount: 1,
+        checkinUrl: "https://liff.line.me/2010452724-MvUou0rS",
+        groups: [
+          { group_id: "Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", group_name: "會長通知群", group_type: "group", status: "enabled", updated_at: new Date().toISOString() },
+          { group_id: "Cyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy", group_name: "測試群", group_type: "group", status: "disabled", updated_at: new Date(Date.now() - 86400000).toISOString() }
+        ]
+      },
       registrationReports: {
         "EV-PREVIEW": {
           event: { event_id: "EV-PREVIEW", event_date: "2026-06-26", event_time: "18:00", name: "六月會長聯誼會" },

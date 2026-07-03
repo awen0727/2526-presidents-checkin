@@ -129,6 +129,12 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 .manage-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: #fbfcfe; }
 .manage-card-info { display: grid; gap: 3px; }
 .compact-button { min-height: 38px; padding: 7px 12px; white-space: nowrap; }
+.line-group-help { display: grid; gap: 5px; margin-top: 14px; padding: 12px; border-radius: 12px; background: #eef3f8; color: var(--muted); font-size: .9rem; }
+.line-group-help strong { color: var(--navy); }
+.line-group-help code { padding: 2px 5px; border-radius: 5px; background: #ffffff; color: var(--navy); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.compact-empty { margin-top: 12px; padding: 12px; }
+.compact-list { margin-top: 12px; }
+.line-group-card { background: #ffffff; }
 .event-status-grid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 6px; margin-top: 8px; }
 .event-status-grid span { padding: 6px 8px; border-radius: 8px; background: #eef3f8; font-size: .86rem; font-weight: 700; }
 .status-open { color: var(--success); background: #dbf4ea !important; }

@@ -4,6 +4,7 @@ const SCHEMA = Object.freeze({
   Events: ["event_id", "event_date", "event_time", "name", "status", "registration_status", "checkin_status", "created_at"],
   EventRegistrations: ["registration_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "status", "registered_at", "canceled_at", "source"],
   Attendance: ["attendance_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "checkin_at", "source"],
+  LineGroups: ["group_id", "group_name", "group_type", "status", "bound_by_user_id", "created_at", "updated_at"],
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
@@ -29,7 +30,8 @@ function setupSystem() {
     "獨立資料表已建立。\n\n接著請到「專案設定 → 指令碼屬性」設定：\n" +
     "LINE_CHANNEL_ID、ADMIN_TOKEN、ROSTER_SPREADSHEET_ID。\n\n" +
     "若要啟用 LINE 官方帳號推播，請再設定 LINE_CHANNEL_ACCESS_TOKEN；" +
-    "CHECKIN_URL 可選填，預設使用目前 LIFF 簽到網址。"
+    "CHECKIN_URL 可選填，預設使用目前 LIFF 簽到網址。\n\n" +
+    "群組推播：將官方帳號加入 LINE 群組後，在群組輸入「綁定群組 群組名稱」。"
   );
 }
 

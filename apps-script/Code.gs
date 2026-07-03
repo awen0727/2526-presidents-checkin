@@ -4,10 +4,21 @@ const SHEETS = Object.freeze({
   EVENTS: "Events",
   REGISTRATIONS: "EventRegistrations",
   ATTENDANCE: "Attendance",
+  LINE_GROUPS: "LineGroups",
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-04-admin-line-id-15";
+const CODE_SCHEMA = Object.freeze({
+  Members: ["member_id", "zone", "division", "club", "name", "phone", "status", "line_user_id", "line_display_name", "updated_at"],
+  BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
+  Events: ["event_id", "event_date", "event_time", "name", "status", "registration_status", "checkin_status", "created_at"],
+  EventRegistrations: ["registration_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "status", "registered_at", "canceled_at", "source"],
+  Attendance: ["attendance_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "checkin_at", "source"],
+  LineGroups: ["group_id", "group_name", "group_type", "status", "bound_by_user_id", "created_at", "updated_at"],
+  AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
+});
+
+const API_VERSION = "2526-presidents-2026-07-04-line-groups-16";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -42,6 +53,18 @@ function handleLineWebhook_(payload) {
     }
     if (event.type === "message" && event.message && event.message.type === "text") {
       const text = String(event.message.text || "").trim();
+      if (/^綁定群組(?:\s+(.+))?$/i.test(text)) {
+        replyLineTextSafe_(event.replyToken, bindLineGroupFromEvent_(event, text));
+        return;
+      }
+      if (/^(群組ID|群組id|groupId|groupid)$/i.test(text)) {
+        replyLineTextSafe_(event.replyToken, lineGroupIdHelpText_(event));
+        return;
+      }
+      if (/^解除群組$/i.test(text)) {
+        replyLineTextSafe_(event.replyToken, disableLineGroupFromEvent_(event));
+        return;
+      }
       if (/^(我的ID|我的id|userId|userid|LINE ID|line id)$/i.test(text)) {
         replyLineTextSafe_(event.replyToken, lineUserIdHelpText_(event));
         return;
@@ -84,6 +107,11 @@ function route_(payload) {
     adminSendRegistrationInvite: adminSendRegistrationInvite_,
     adminSendEventReminder: adminSendEventReminder_,
     adminSendCheckinReminder: adminSendCheckinReminder_,
+    adminSendGroupRegistrationInvite: adminSendGroupRegistrationInvite_,
+    adminSendGroupEventReminder: adminSendGroupEventReminder_,
+    adminSendGroupCheckinReminder: adminSendGroupCheckinReminder_,
+    adminSetLineGroupStatus: adminSetLineGroupStatus_,
+    adminDeleteLineGroup: adminDeleteLineGroup_,
     adminAttendanceReport: adminAttendanceReport_
   };
   if (publicActions[action]) return publicActions[action](payload);
@@ -636,11 +664,14 @@ function adminLineStatus_() {
 }
 
 function lineStatusFromMembers_(members) {
+  const groups = lineGroupRows_();
   return {
     configured: Boolean(lineChannelAccessToken_()),
     boundCount: members.filter(member => member.line_user_id).length,
+    groups: groups.map(publicLineGroup_),
+    enabledGroupCount: groups.filter(group => lineGroupStatus_(group) === "enabled").length,
     checkinUrl: checkinUrl_(),
-    note: "官方帳號推播需設定 LINE_CHANNEL_ACCESS_TOKEN，且會長需加入官方帳號。"
+    note: "官方帳號推播需設定 LINE_CHANNEL_ACCESS_TOKEN。個人推播需會長加入官方帳號；群組推播需官方帳號加入並綁定該群組。"
   };
 }
 
@@ -672,6 +703,50 @@ function adminSendCheckinReminder_(payload) {
   const result = multicastLineText_(members.map(member => member.line_user_id), checkinReminderText_(event));
   audit_("line_checkin_reminder", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
   return { message: `已提醒未簽到者：${result.sent} 位，略過 ${result.skipped} 位` };
+}
+
+function adminSendGroupRegistrationInvite_(payload) {
+  const event = requireEvent_(payload.eventId);
+  if (!isEventRegisterable_(event)) throw new Error("此活動已過期，無法推播報名通知");
+  const result = pushLineGroupsText_(enabledLineGroupIds_(), registrationInviteText_(event));
+  audit_("line_group_registration_invite", "admin", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
+  return { message: `已送出群組報名通知：${result.sent} 個群組，略過 ${result.skipped} 個` };
+}
+
+function adminSendGroupEventReminder_(payload) {
+  const event = requireEvent_(payload.eventId);
+  const result = pushLineGroupsText_(enabledLineGroupIds_(), groupEventReminderText_(event));
+  audit_("line_group_event_reminder", "admin", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
+  return { message: `已送出群組活動提醒：${result.sent} 個群組，略過 ${result.skipped} 個` };
+}
+
+function adminSendGroupCheckinReminder_(payload) {
+  const event = requireEvent_(payload.eventId);
+  const result = pushLineGroupsText_(enabledLineGroupIds_(), groupCheckinReminderText_(event));
+  audit_("line_group_checkin_reminder", "admin", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
+  return { message: `已送出群組簽到提醒：${result.sent} 個群組，略過 ${result.skipped} 個` };
+}
+
+function adminSetLineGroupStatus_(payload) {
+  ensureLineGroupsSheet_();
+  const groupId = cleanText_(payload.groupId, 120, "群組 ID");
+  const status = String(payload.status || "");
+  if (!["enabled", "disabled"].includes(status)) throw new Error("群組狀態不正確");
+  const group = findOne_(SHEETS.LINE_GROUPS, "group_id", groupId);
+  if (!group) throw new Error("找不到 LINE 群組");
+  updateRow_(SHEETS.LINE_GROUPS, group._row, { status, updated_at: now_() });
+  audit_("line_group_status_changed", "admin", groupId, status);
+  return { message: status === "enabled" ? "群組已啟用" : "群組已停用" };
+}
+
+function adminDeleteLineGroup_(payload) {
+  ensureLineGroupsSheet_();
+  const groupId = cleanText_(payload.groupId, 120, "群組 ID");
+  const group = findOne_(SHEETS.LINE_GROUPS, "group_id", groupId);
+  if (!group) throw new Error("找不到 LINE 群組");
+  sheet_(SHEETS.LINE_GROUPS).deleteRow(group._row);
+  audit_("line_group_deleted", "admin", groupId, group.group_name || "");
+  return { message: "群組已刪除" };
 }
 
 function sendTomorrowEventReminders() {
@@ -805,7 +880,7 @@ function ensureRegistrationSheet_() {
   const spreadsheet = spreadsheet_();
   let sheet = spreadsheet.getSheetByName(SHEETS.REGISTRATIONS);
   if (sheet) return;
-  const headers = SCHEMA[SHEETS.REGISTRATIONS];
+  const headers = CODE_SCHEMA[SHEETS.REGISTRATIONS];
   if (!headers) throw new Error(`未定義資料表：${SHEETS.REGISTRATIONS}`);
   sheet = spreadsheet.insertSheet(SHEETS.REGISTRATIONS);
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -815,6 +890,42 @@ function ensureRegistrationSheet_() {
     .setFontColor("#ffffff")
     .setBackground("#163f73");
   sheet.autoResizeColumns(1, headers.length);
+}
+
+function lineGroupRows_() {
+  ensureLineGroupsSheet_();
+  return rows_(SHEETS.LINE_GROUPS);
+}
+
+function ensureLineGroupsSheet_() {
+  ensureSheet_(SHEETS.LINE_GROUPS);
+}
+
+function ensureSheet_(name) {
+  const spreadsheet = spreadsheet_();
+  let sheet = spreadsheet.getSheetByName(name);
+  const headers = CODE_SCHEMA[name];
+  if (!headers) throw new Error(`未定義資料表：${name}`);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(name);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length)
+      .setFontWeight("bold")
+      .setFontColor("#ffffff")
+      .setBackground("#163f73");
+    sheet.autoResizeColumns(1, headers.length);
+    return sheet;
+  }
+  const existingHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0].map(String);
+  let lastColumn = sheet.getLastColumn();
+  headers.forEach(header => {
+    if (existingHeaders.includes(header)) return;
+    lastColumn += 1;
+    sheet.getRange(1, lastColumn).setValue(header);
+    sheet.getRange(1, lastColumn).setFontWeight("bold").setFontColor("#ffffff").setBackground("#163f73");
+  });
+  return sheet;
 }
 
 function getRegisterableEvents_() {
@@ -948,6 +1059,109 @@ function adminLineUserIds_() {
     .filter(Boolean);
 }
 
+function bindLineGroupFromEvent_(event, text) {
+  const source = (event && event.source) || {};
+  const groupId = source.groupId || source.roomId || "";
+  const groupType = source.type || "";
+  if (!groupId || !["group", "room"].includes(groupType)) {
+    return "請在要綁定的 LINE 群組裡輸入：綁定群組 群組名稱";
+  }
+  const match = String(text || "").trim().match(/^綁定群組(?:\s+(.+))?$/i);
+  const providedName = match && match[1] ? cleanText_(match[1], 80, "群組名稱") : "";
+  const summary = lineGroupSummarySafe_(groupId, groupType);
+  const groupName = providedName || summary.name || (groupType === "room" ? "未命名多人聊天室" : "未命名群組");
+  upsertLineGroup_(groupId, groupName, groupType, source.userId || "");
+  return [
+    "LINE 群組已綁定",
+    `名稱：${groupName}`,
+    `用途：活動報名、活動提醒、簽到提醒群組推播`,
+    "",
+    "之後可在後台「活動管理」查看、停用或刪除這個群組。"
+  ].join("\n");
+}
+
+function disableLineGroupFromEvent_(event) {
+  const source = (event && event.source) || {};
+  const groupId = source.groupId || source.roomId || "";
+  if (!groupId) return "請在已綁定的 LINE 群組裡輸入：解除群組";
+  ensureLineGroupsSheet_();
+  const group = findOne_(SHEETS.LINE_GROUPS, "group_id", groupId);
+  if (!group) return "這個群組尚未綁定。";
+  updateRow_(SHEETS.LINE_GROUPS, group._row, { status: "disabled", updated_at: now_() });
+  audit_("line_group_disabled_by_command", source.userId || "group", groupId, group.group_name || "");
+  return "此 LINE 群組已停用，後台不會再推播到這個群組。";
+}
+
+function lineGroupIdHelpText_(event) {
+  const source = (event && event.source) || {};
+  const groupId = source.groupId || source.roomId || "";
+  if (!groupId) return "請在 LINE 群組裡輸入「群組ID」，系統才能取得 groupId。";
+  return [
+    "此聊天室 ID：",
+    groupId,
+    "",
+    "若要綁定為推播群組，請在此群組輸入：",
+    "綁定群組 會長通知群"
+  ].join("\n");
+}
+
+function upsertLineGroup_(groupId, groupName, groupType, boundByUserId) {
+  ensureLineGroupsSheet_();
+  const existing = findOne_(SHEETS.LINE_GROUPS, "group_id", groupId);
+  const values = {
+    group_name: groupName,
+    group_type: groupType,
+    status: "enabled",
+    bound_by_user_id: boundByUserId || "",
+    updated_at: now_()
+  };
+  if (existing) {
+    updateRow_(SHEETS.LINE_GROUPS, existing._row, values);
+    audit_("line_group_rebound", boundByUserId || "group", groupId, groupName);
+    return;
+  }
+  append_(SHEETS.LINE_GROUPS, {
+    group_id: groupId,
+    ...values,
+    created_at: now_()
+  });
+  audit_("line_group_bound", boundByUserId || "group", groupId, groupName);
+}
+
+function lineGroupSummarySafe_(groupId, groupType) {
+  try {
+    if (!lineChannelAccessToken_() || groupType !== "group") return {};
+    const response = lineGet_(`/v2/bot/group/${encodeURIComponent(groupId)}/summary`);
+    const summary = JSON.parse(response.getContentText());
+    return { name: summary.groupName || "", pictureUrl: summary.pictureUrl || "" };
+  } catch (error) {
+    audit_("line_group_summary_failed", "system", groupId, error.message);
+    return {};
+  }
+}
+
+function publicLineGroup_(group) {
+  return {
+    group_id: group.group_id,
+    group_name: group.group_name || "未命名群組",
+    group_type: group.group_type || "group",
+    status: lineGroupStatus_(group),
+    bound_by_user_id: group.bound_by_user_id || "",
+    created_at: group.created_at || "",
+    updated_at: group.updated_at || ""
+  };
+}
+
+function lineGroupStatus_(group) {
+  return String((group && group.status) || "enabled");
+}
+
+function enabledLineGroupIds_() {
+  const groups = lineGroupRows_().filter(group => lineGroupStatus_(group) === "enabled");
+  if (!groups.length) throw new Error("尚未綁定任何啟用中的 LINE 群組");
+  return groups.map(group => group.group_id);
+}
+
 function registrationInviteText_(event) {
   return [
     "2526會長聯誼會活動報名",
@@ -984,11 +1198,29 @@ function eventReminderText_(event) {
   ].join("\n");
 }
 
+function groupEventReminderText_(event) {
+  return [
+    "2526會長聯誼會活動提醒",
+    `${event.event_date} ${event.name}`,
+    "提醒已報名會長準時出席。活動當天可由下方連結完成簽到：",
+    checkinUrl_()
+  ].join("\n");
+}
+
 function checkinReminderText_(event) {
   return [
     "2526會長聯誼會簽到提醒",
     `${event.event_date} ${event.name}`,
     "系統尚未看到您的簽到紀錄，請點下方連結完成簽到：",
+    checkinUrl_()
+  ].join("\n");
+}
+
+function groupCheckinReminderText_(event) {
+  return [
+    "2526會長聯誼會簽到提醒",
+    `${event.event_date} ${event.name}`,
+    "本場活動已可簽到，請尚未完成簽到的會長點下方連結操作：",
     checkinUrl_()
   ].join("\n");
 }
@@ -1000,7 +1232,8 @@ function officialAccountHelpText_() {
     checkinUrl_(),
     "",
     "首次使用請先完成 LINE 身分綁定。",
-    "管理者如需查詢 LINE userId，請輸入「我的ID」。"
+    "管理者如需查詢 LINE userId，請輸入「我的ID」。",
+    "如需綁定群組推播，請在群組輸入「綁定群組 群組名稱」。"
   ].join("\n");
 }
 
@@ -1069,6 +1302,18 @@ function multicastLineText_(lineUserIds, text) {
   return { sent, skipped };
 }
 
+function pushLineGroupsText_(groupIds, text) {
+  const uniqueIds = Array.from(new Set(groupIds.filter(Boolean)));
+  if (!lineChannelAccessToken_()) throw new Error("尚未設定 LINE_CHANNEL_ACCESS_TOKEN");
+  const skipped = groupIds.length - uniqueIds.length;
+  let sent = 0;
+  uniqueIds.forEach(groupId => {
+    pushLineText_(groupId, text);
+    sent += 1;
+  });
+  return { sent, skipped };
+}
+
 function lineFetch_(path, payload) {
   const response = UrlFetchApp.fetch(`https://api.line.me${path}`, {
     method: "post",
@@ -1080,6 +1325,19 @@ function lineFetch_(path, payload) {
   const code = response.getResponseCode();
   if (code < 200 || code >= 300) {
     throw new Error(`LINE 推播失敗 (${code})：${response.getContentText()}`);
+  }
+  return response;
+}
+
+function lineGet_(path) {
+  const response = UrlFetchApp.fetch(`https://api.line.me${path}`, {
+    method: "get",
+    headers: { Authorization: `Bearer ${lineChannelAccessToken_()}` },
+    muteHttpExceptions: true
+  });
+  const code = response.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error(`LINE API 讀取失敗 (${code})：${response.getContentText()}`);
   }
   return response;
 }
@@ -1235,7 +1493,7 @@ function findOne_(name, key, value) {
 
 function append_(name, data) {
   const sheet = sheet_(name);
-  const fallbackHeaders = SCHEMA[name];
+  const fallbackHeaders = CODE_SCHEMA[name];
   if (!fallbackHeaders) throw new Error(`未定義資料表：${name}`);
   const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), fallbackHeaders.length)).getDisplayValues()[0]
     .map(String)
