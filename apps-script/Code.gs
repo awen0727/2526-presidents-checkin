@@ -7,7 +7,7 @@ const SHEETS = Object.freeze({
   AUDIT: "AuditLogs"
 });
 
-const API_VERSION = "2526-presidents-2026-07-04-admin-summary-bulk-13";
+const API_VERSION = "2526-presidents-2026-07-04-line-user-id-14";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -42,6 +42,10 @@ function handleLineWebhook_(payload) {
     }
     if (event.type === "message" && event.message && event.message.type === "text") {
       const text = String(event.message.text || "").trim();
+      if (/^(我的ID|我的id|userId|userid|LINE ID|line id)$/i.test(text)) {
+        replyLineTextSafe_(event.replyToken, lineUserIdHelpText_(event));
+        return;
+      }
       if (/報名|簽到|出席|活動|查詢|help|menu/i.test(text)) {
         replyLineTextSafe_(event.replyToken, officialAccountHelpText_());
       }
@@ -994,7 +998,18 @@ function officialAccountHelpText_() {
     "可由下方連結進行活動報名、取消報名與當日簽到：",
     checkinUrl_(),
     "",
-    "首次使用請先完成 LINE 身分綁定。"
+    "首次使用請先完成 LINE 身分綁定。",
+    "管理者如需查詢 LINE userId，請輸入「我的ID」。"
+  ].join("\n");
+}
+
+function lineUserIdHelpText_(event) {
+  const userId = event && event.source && event.source.userId;
+  return [
+    "您的 LINE userId：",
+    userId || "無法取得 userId，請確認訊息是由個人帳號傳送。",
+    "",
+    "若要設定管理者通知，請將上方 userId 填入 Apps Script 指令碼屬性 ADMIN_LINE_USER_IDS。"
   ].join("\n");
 }
 

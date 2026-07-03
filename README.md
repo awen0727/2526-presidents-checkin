@@ -85,6 +85,7 @@
 4. Webhook URL 填入目前 Apps Script Web App `/exec` 網址。
 5. `CHECKIN_URL` 建議填 LIFF URL：`https://liff.line.me/2010452724-MvUou0rS`。
 6. 若管理者要收到待審、報名、取消報名通知，將管理者 LINE userId 填入 `ADMIN_LINE_USER_IDS`。
+7. 管理者可先加入官方帳號，對官方帳號輸入「我的ID」，系統會回覆可填入 `ADMIN_LINE_USER_IDS` 的 userId。
 
 注意事項：
 
@@ -94,7 +95,7 @@
 - 後台活動管理可推播「報名通知」給所有已綁定會長、「活動提醒」給已報名者、「簽到提醒」給已報名但尚未簽到者。
 - 報名與簽到是獨立狀態：可先開放報名，簽到由管理者開放後立即生效；刪除活動前需先關閉報名與簽到。
 - 舊活動會自動關閉：活動前 1.5 小時截止報名，活動日 23:59 後關閉簽到。
-- 官方帳號 Webhook 可使用同一個 Apps Script 網頁應用程式網址；使用者輸入「報名、簽到、出席、活動、查詢」時會回覆會長端入口。
+- 官方帳號 Webhook 可使用同一個 Apps Script 網頁應用程式網址；使用者輸入「報名、簽到、出席、活動、查詢」時會回覆會長端入口，輸入「我的ID」會回覆自己的 LINE userId。
 - 可在 Apps Script 觸發條件新增時間驅動：
   - `sendTomorrowEventReminders()`：活動前一天提醒已報名者
   - `sendTodayCheckinReminders()`：活動當天提醒已報名但尚未簽到者
