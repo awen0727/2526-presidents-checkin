@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const API_VERSION = "2526-presidents-2026-07-25-member-birthdays-20";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-25-member-birthdays-20";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -28,19 +28,19 @@ function doGet(e) {
   try {
     const action = String((e && e.parameter && e.parameter.action) || "");
     if (action !== "health") throw new Error("不支援的 GET 操作");
-    return json_({ ok: true, apiVersion: API_VERSION, spreadsheetConfigured: Boolean(spreadsheetId_()) });
+    return json_({ ok: true, apiVersion: PRESIDENTS_API_VERSION, spreadsheetConfigured: Boolean(spreadsheetId_()) });
   } catch (error) {
-    return json_({ ok: false, apiVersion: API_VERSION, error: error.message });
+    return json_({ ok: false, apiVersion: PRESIDENTS_API_VERSION, error: error.message });
   }
 }
 
 function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || "{}");
-    if (Array.isArray(payload.events)) return json_({ ok: true, apiVersion: API_VERSION, ...handleLineWebhook_(payload) });
-    return json_({ ok: true, apiVersion: API_VERSION, ...route_(payload) });
+    if (Array.isArray(payload.events)) return json_({ ok: true, apiVersion: PRESIDENTS_API_VERSION, ...handleLineWebhook_(payload) });
+    return json_({ ok: true, apiVersion: PRESIDENTS_API_VERSION, ...route_(payload) });
   } catch (error) {
-    return json_({ ok: false, apiVersion: API_VERSION, error: error.message });
+    return json_({ ok: false, apiVersion: PRESIDENTS_API_VERSION, error: error.message });
   }
 }
 
