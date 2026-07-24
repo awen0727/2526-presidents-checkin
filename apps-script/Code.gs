@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const API_VERSION = "2526-presidents-2026-07-24-line-command-prefix-17";
+const API_VERSION = "2526-presidents-2026-07-24-month-birthdays-18";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -69,6 +69,10 @@ function handleLineWebhook_(payload) {
       }
       if (/^(我的ID|我的id|userId|userid|LINE ID|line id)$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, lineUserIdHelpText_(event));
+        return;
+      }
+      if (/^本月壽星$/.test(command)) {
+        replyLineTextSafe_(event.replyToken, monthlyBirthdayText_());
         return;
       }
       if (/報名|簽到|出席|活動|查詢|help|menu/i.test(command)) {
@@ -1227,6 +1231,152 @@ function groupCheckinReminderText_(event) {
   ].join("\n");
 }
 
+function monthlyBirthdayText_() {
+  const month = Number(Utilities.formatDate(new Date(), "Asia/Taipei", "M"));
+  const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+  const birthdays = monthlyBirthdays_()[month] || [];
+  if (!birthdays.length) return `${monthNames[month - 1]}本月尚無壽星資料。`;
+  const lines = birthdays
+    .slice()
+    .sort((a, b) => a.day - b.day || String(a.club || "").localeCompare(String(b.club || ""), "zh-Hant", { numeric: true }))
+    .map(person => {
+      const club = person.club ? `${person.club}｜` : "";
+      return `• ${person.month}/${person.day} ${club}${person.name}`;
+    });
+  return [
+    `🎂 ${monthNames[month - 1]}壽星名單`,
+    ...lines,
+    "",
+    "祝福本月壽星生日快樂，健康順心！"
+  ].join("\n");
+}
+
+function monthlyBirthdays_() {
+  return {
+    1: [
+      { club: "崇愛", name: "林宏寬", month: 1, day: 19 },
+      { club: "菁鑽", name: "張智翔", month: 1, day: 20 },
+      { club: "北區", name: "黃文生", month: 1, day: 4 },
+      { club: "松鶴", name: "涂鴻明", month: 1, day: 10 },
+      { club: "愛馨", name: "林伶恩", month: 1, day: 5 },
+      { club: "圓山", name: "陳致鵬", month: 1, day: 15 },
+      { club: "菁彩", name: "沈秀嫻", month: 1, day: 28 },
+      { club: "造夢者", name: "徐湘筑", month: 1, day: 12 }
+    ],
+    2: [
+      { club: "百齡", name: "郭顯彰", month: 2, day: 23 },
+      { club: "建國", name: "鄭騰娥", month: 2, day: 28 },
+      { club: "信德", name: "莊雨真", month: 2, day: 28 },
+      { club: "吉達", name: "簡長春", month: 2, day: 25 },
+      { club: "吉翔", name: "梁凱鈞", month: 2, day: 23 },
+      { club: "卓越國際", name: "李德豪", month: 2, day: 24 }
+    ],
+    3: [
+      { club: "愛華", name: "許秋月", month: 3, day: 10 },
+      { club: "中北", name: "林熙悅", month: 3, day: 6 },
+      { club: "南門", name: "陳怡伶", month: 3, day: 5 },
+      { club: "德馨", name: "楊素瑾", month: 3, day: 12 },
+      { club: "世界商務", name: "孫志財", month: 3, day: 15 }
+    ],
+    4: [
+      { club: "銀河", name: "蔡滄洲", month: 4, day: 24 },
+      { club: "菁麗景", name: "簡丞佐", month: 4, day: 11 },
+      { club: "翔贊", name: "陳柏勳", month: 4, day: 24 },
+      { club: "雙園", name: "鄭月鳳", month: 4, day: 1 },
+      { club: "菁英", name: "許桂英", month: 4, day: 10 },
+      { club: "景美", name: "張克誌", month: 4, day: 6 },
+      { club: "友聲", name: "顏呈芬", month: 4, day: 1 },
+      { club: "太平", name: "周念暉", month: 4, day: 15 },
+      { club: "雙子星", name: "李芯媛", month: 4, day: 22 },
+      { club: "長虹", name: "黃偉瑜", month: 4, day: 9 },
+      { club: "祥和", name: "傅木從", month: 4, day: 20 }
+    ],
+    5: [
+      { club: "長春", name: "楊存育", month: 5, day: 10 },
+      { club: "力行", name: "林友清", month: 5, day: 25 },
+      { club: "長江", name: "簡立其", month: 5, day: 21 },
+      { club: "菁緻", name: "謝耀德", month: 5, day: 21 },
+      { club: "", name: "顏洋洋總監", month: 5, day: 25 }
+    ],
+    6: [
+      { club: "西區女", name: "李正美", month: 6, day: 22 },
+      { club: "皇家騎士", name: "曾彬雄", month: 6, day: 15 },
+      { club: "民權", name: "陳政新", month: 6, day: 16 },
+      { club: "仁德", name: "吳銘峰", month: 6, day: 12 },
+      { club: "仁愛", name: "鄧凱文", month: 6, day: 16 },
+      { club: "同心", name: "曾妍蓉", month: 6, day: 2 },
+      { club: "自強", name: "曾世豪", month: 6, day: 30 },
+      { club: "黃埔", name: "江偉佑", month: 6, day: 20 }
+    ],
+    7: [
+      { club: "周遊", name: "洪淑芬", month: 7, day: 10 },
+      { club: "萬華", name: "嚴之唯", month: 7, day: 19 },
+      { club: "西門", name: "洪永守", month: 7, day: 29 },
+      { club: "菁鐸", name: "陳正德", month: 7, day: 4 },
+      { club: "群愛", name: "王立文", month: 7, day: 27 },
+      { club: "龍鳳", name: "丁程揚", month: 7, day: 15 },
+      { club: "大稻埕", name: "鄧麗華", month: 7, day: 15 },
+      { club: "華山", name: "謝尚軒", month: 7, day: 11 },
+      { club: "丰勝", name: "簡漪凌", month: 7, day: 2 },
+      { club: "南區", name: "陳幼梅", month: 7, day: 1 },
+      { club: "永安", name: "王鐘輝", month: 7, day: 23 }
+    ],
+    8: [
+      { club: "太陽", name: "郭文龍", month: 8, day: 1 },
+      { club: "西區", name: "林士哲", month: 8, day: 1 },
+      { club: "翔賀", name: "許聖楷", month: 8, day: 5 },
+      { club: "建成", name: "程柏華", month: 8, day: 14 },
+      { club: "太極藝術美學", name: "林逸菁", month: 8, day: 30 },
+      { club: "東門", name: "廖虹蕙", month: 8, day: 5 },
+      { club: "大同", name: "葉又睿", month: 8, day: 12 },
+      { club: "仕貿", name: "黃湘吟", month: 8, day: 17 },
+      { club: "日月光", name: "吳秋玲", month: 8, day: 29 },
+      { club: "菁誠", name: "陳朝夫", month: 8, day: 19 },
+      { club: "鉅星匯", name: "張聖芬", month: 8, day: 8 }
+    ],
+    9: [
+      { club: "臺灣科大EMBA", name: "呂建明", month: 9, day: 7 },
+      { club: "目倍果", name: "林宏展", month: 9, day: 6 },
+      { club: "青山", name: "徐銘燦", month: 9, day: 30 },
+      { club: "一交", name: "陳景貽", month: 9, day: 4 }
+    ],
+    10: [
+      { club: "明星", name: "柯如憶", month: 10, day: 7 },
+      { club: "千禧", name: "王又禾", month: 10, day: 6 },
+      { club: "京華", name: "周素慧", month: 10, day: 26 },
+      { club: "東南", name: "陳吉隆", month: 10, day: 1 },
+      { club: "大安", name: "李俊賢", month: 10, day: 15 },
+      { club: "中原", name: "曾郁儒", month: 10, day: 24 },
+      { club: "新台北", name: "孫國文", month: 10, day: 29 },
+      { club: "老松", name: "何俊達", month: 10, day: 13 }
+    ],
+    11: [
+      { club: "建華", name: "吳忠德", month: 11, day: 8 },
+      { club: "翔順", name: "劉俊宏", month: 11, day: 18 },
+      { club: "春暉", name: "黃金輝", month: 11, day: 12 },
+      { club: "中區", name: "陳品安", month: 11, day: 25 },
+      { club: "莊敬", name: "林介中", month: 11, day: 17 },
+      { club: "榮華", name: "江慧蓮", month: 11, day: 30 },
+      { club: "愛國", name: "陳科成", month: 11, day: 12 },
+      { club: "慶華", name: "蕭炎明", month: 11, day: 27 },
+      { club: "東北", name: "鍾武村", month: 11, day: 20 },
+      { club: "華興", name: "黃秀美", month: 11, day: 28 },
+      { club: "金國", name: "湯善亦", month: 11, day: 19 },
+      { club: "安和", name: "賴英蘭", month: 11, day: 6 }
+    ],
+    12: [
+      { club: "尪公", name: "高靚怡", month: 12, day: 17 },
+      { club: "鳳凰藝術美學", name: "洪玉來", month: 12, day: 7 },
+      { club: "上贏", name: "范文祥", month: 12, day: 15 },
+      { club: "世代", name: "蔡旺盛", month: 12, day: 14 },
+      { club: "至善", name: "張欽堯", month: 12, day: 14 },
+      { club: "波麗士", name: "陳嘉偉", month: 12, day: 10 },
+      { club: "至誠", name: "古富翔", month: 12, day: 15 },
+      { club: "", name: "楊孟峰秘書長", month: 12, day: 8 }
+    ]
+  };
+}
+
 function officialAccountHelpText_() {
   return [
     "2526會長聯誼會服務中心",
@@ -1234,6 +1384,7 @@ function officialAccountHelpText_() {
     checkinUrl_(),
     "",
     "首次使用請先完成 LINE 身分綁定。",
+    "查詢本月壽星，請輸入「＠本月壽星」。",
     "管理者如需查詢 LINE userId，請輸入「＠我的ID」。",
     "如需綁定群組推播，請在群組輸入「＠綁定群組 群組名稱」。"
   ].join("\n");
