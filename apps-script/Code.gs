@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const API_VERSION = "2526-presidents-2026-07-25-line-mention-commands-19";
+const API_VERSION = "2526-presidents-2026-07-25-member-birthdays-20";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -422,6 +422,7 @@ function adminOverview_() {
       division: member.division,
       club: member.club,
       name: member.name,
+      birthday: birthdayForMember_(member),
       masked_phone: maskPhone_(member.phone),
       participating: isParticipating_(member),
       bound: Boolean(member.line_user_id),
@@ -1393,6 +1394,22 @@ function monthlyBirthdays_() {
       { club: "", name: "楊孟峰秘書長", month: 12, day: 8 }
     ]
   };
+}
+
+function birthdayForMember_(member) {
+  const club = String((member && member.club) || "").trim();
+  const name = String((member && member.name) || "").trim();
+  if (!name) return "";
+  const birthdays = Object.keys(monthlyBirthdays_())
+    .reduce((items, month) => items.concat(monthlyBirthdays_()[month]), []);
+  const matched = birthdays.find(person =>
+    String(person.name || "").trim() === name
+    && String(person.club || "").trim() === club
+  ) || birthdays.find(person =>
+    String(person.name || "").trim() === name
+    && !String(person.club || "").trim()
+  );
+  return matched ? `${matched.month}/${matched.day}` : "";
 }
 
 function officialAccountHelpText_() {

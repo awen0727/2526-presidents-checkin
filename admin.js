@@ -398,7 +398,7 @@
     const division = document.getElementById("memberDivisionFilter").value;
     const club = document.getElementById("memberClubFilter").value;
     return state.members.filter(member => {
-      const text = [member.zone, member.division, member.club, member.name].join(" ").toLowerCase();
+      const text = [member.zone, member.division, member.club, member.name, member.birthday].join(" ").toLowerCase();
       if (participation === "participating" && !member.participating) return false;
       if (participation === "not_participating" && member.participating) return false;
       if (zone && member.zone !== zone) return false;
@@ -431,6 +431,7 @@
         selection,
         makeElement("strong", "", `${member.club}｜${member.name || "姓名待補"}`),
         makeElement("span", "muted", `${member.zone} · ${member.division}`),
+        makeElement("span", "birthday-state", member.birthday ? `生日：${member.birthday}` : "生日：未設定"),
         makeElement("span", member.participating ? "participating-state" : "not-participating-state", member.participating ? "今年參加" : "今年未參加"),
         makeElement("span", member.bound ? "bound-state" : "unbound-state", member.bound
           ? `LINE 已綁定：${member.line_display_name || "名稱未記錄"}`
@@ -927,8 +928,8 @@
       ],
       attendance: [{ attendance_id: "AT-PREVIEW", member_id: "P2526-001", name: "預覽會長", club: "預覽", checkin_at: new Date().toISOString(), source: "LINE" }],
       members: [
-        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", masked_phone: "******1234", participating: true, bound: true, line_user_id: "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", line_display_name: "LINE 預覽" },
-        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", masked_phone: "******5678", participating: false, bound: false, line_user_id: "", line_display_name: "" }
+        { member_id: "P2526-001", zone: "第一專區", division: "第1分區", club: "預覽", name: "預覽會長", birthday: "7/27", masked_phone: "******1234", participating: true, bound: true, line_user_id: "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", line_display_name: "LINE 預覽" },
+        { member_id: "P2526-002", zone: "第一專區", division: "第1分區", club: "測試", name: "測試會長", birthday: "", masked_phone: "******5678", participating: false, bound: false, line_user_id: "", line_display_name: "" }
       ],
       lineOfficial: {
         configured: true,
