@@ -31,7 +31,7 @@ function setupSystem() {
     "LINE_CHANNEL_ID、ADMIN_TOKEN、ROSTER_SPREADSHEET_ID。\n\n" +
     "若要啟用 LINE 官方帳號推播，請再設定 LINE_CHANNEL_ACCESS_TOKEN；" +
     "CHECKIN_URL 可選填，預設使用目前 LIFF 簽到網址。\n\n" +
-    "群組推播：將官方帳號加入 LINE 群組後，在群組輸入「綁定群組 群組名稱」。"
+    "群組推播：將官方帳號加入 LINE 群組後，在群組輸入「＠綁定群組 群組名稱」。"
   );
 }
 

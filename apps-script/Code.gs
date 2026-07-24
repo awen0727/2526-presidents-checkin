@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const API_VERSION = "2526-presidents-2026-07-04-line-groups-16";
+const API_VERSION = "2526-presidents-2026-07-24-line-command-prefix-17";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -53,23 +53,25 @@ function handleLineWebhook_(payload) {
     }
     if (event.type === "message" && event.message && event.message.type === "text") {
       const text = String(event.message.text || "").trim();
-      if (/^綁定群組(?:\s+(.+))?$/i.test(text)) {
-        replyLineTextSafe_(event.replyToken, bindLineGroupFromEvent_(event, text));
+      if (!/^[＠@]/.test(text)) return;
+      const command = text.replace(/^[＠@]\s*/, "");
+      if (/^綁定群組(?:\s+(.+))?$/i.test(command)) {
+        replyLineTextSafe_(event.replyToken, bindLineGroupFromEvent_(event, command));
         return;
       }
-      if (/^(群組ID|群組id|groupId|groupid)$/i.test(text)) {
+      if (/^(群組ID|群組id|groupId|groupid)$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, lineGroupIdHelpText_(event));
         return;
       }
-      if (/^解除群組$/i.test(text)) {
+      if (/^解除群組$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, disableLineGroupFromEvent_(event));
         return;
       }
-      if (/^(我的ID|我的id|userId|userid|LINE ID|line id)$/i.test(text)) {
+      if (/^(我的ID|我的id|userId|userid|LINE ID|line id)$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, lineUserIdHelpText_(event));
         return;
       }
-      if (/報名|簽到|出席|活動|查詢|help|menu/i.test(text)) {
+      if (/報名|簽到|出席|活動|查詢|help|menu/i.test(command)) {
         replyLineTextSafe_(event.replyToken, officialAccountHelpText_());
       }
     }
@@ -1064,7 +1066,7 @@ function bindLineGroupFromEvent_(event, text) {
   const groupId = source.groupId || source.roomId || "";
   const groupType = source.type || "";
   if (!groupId || !["group", "room"].includes(groupType)) {
-    return "請在要綁定的 LINE 群組裡輸入：綁定群組 群組名稱";
+    return "請在要綁定的 LINE 群組裡輸入：＠綁定群組 群組名稱";
   }
   const match = String(text || "").trim().match(/^綁定群組(?:\s+(.+))?$/i);
   const providedName = match && match[1] ? cleanText_(match[1], 80, "群組名稱") : "";
@@ -1083,7 +1085,7 @@ function bindLineGroupFromEvent_(event, text) {
 function disableLineGroupFromEvent_(event) {
   const source = (event && event.source) || {};
   const groupId = source.groupId || source.roomId || "";
-  if (!groupId) return "請在已綁定的 LINE 群組裡輸入：解除群組";
+  if (!groupId) return "請在已綁定的 LINE 群組裡輸入：＠解除群組";
   ensureLineGroupsSheet_();
   const group = findOne_(SHEETS.LINE_GROUPS, "group_id", groupId);
   if (!group) return "這個群組尚未綁定。";
@@ -1095,13 +1097,13 @@ function disableLineGroupFromEvent_(event) {
 function lineGroupIdHelpText_(event) {
   const source = (event && event.source) || {};
   const groupId = source.groupId || source.roomId || "";
-  if (!groupId) return "請在 LINE 群組裡輸入「群組ID」，系統才能取得 groupId。";
+  if (!groupId) return "請在 LINE 群組裡輸入「＠群組ID」，系統才能取得 groupId。";
   return [
     "此聊天室 ID：",
     groupId,
     "",
     "若要綁定為推播群組，請在此群組輸入：",
-    "綁定群組 會長通知群"
+    "＠綁定群組 會長通知群"
   ].join("\n");
 }
 
@@ -1232,8 +1234,8 @@ function officialAccountHelpText_() {
     checkinUrl_(),
     "",
     "首次使用請先完成 LINE 身分綁定。",
-    "管理者如需查詢 LINE userId，請輸入「我的ID」。",
-    "如需綁定群組推播，請在群組輸入「綁定群組 群組名稱」。"
+    "管理者如需查詢 LINE userId，請輸入「＠我的ID」。",
+    "如需綁定群組推播，請在群組輸入「＠綁定群組 群組名稱」。"
   ].join("\n");
 }
 
