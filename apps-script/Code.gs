@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const API_VERSION = "2526-presidents-2026-07-24-month-birthdays-18";
+const API_VERSION = "2526-presidents-2026-07-25-line-mention-commands-19";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -53,8 +53,8 @@ function handleLineWebhook_(payload) {
     }
     if (event.type === "message" && event.message && event.message.type === "text") {
       const text = String(event.message.text || "").trim();
-      if (!/^[＠@]/.test(text)) return;
-      const command = text.replace(/^[＠@]\s*/, "");
+      const command = parseLineCommand_(text);
+      if (!command) return;
       if (/^綁定群組(?:\s+(.+))?$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, bindLineGroupFromEvent_(event, command));
         return;
@@ -81,6 +81,24 @@ function handleLineWebhook_(payload) {
     }
   });
   return { message: "webhook accepted" };
+}
+
+function parseLineCommand_(text) {
+  const raw = String(text || "").trim();
+  if (!/^[＠@]/.test(raw)) return "";
+  const direct = raw.replace(/^[＠@]\s*/, "").trim();
+  const withoutMention = direct.replace(/^[^\s　]+[\s　]+/, "").trim();
+  const candidates = [direct, withoutMention].filter(Boolean);
+  const exactPatterns = [
+    /^綁定群組(?:\s+(.+))?$/i,
+    /^(群組ID|群組id|groupId|groupid)$/i,
+    /^解除群組$/i,
+    /^(我的ID|我的id|userId|userid|LINE ID|line id)$/i,
+    /^本月壽星$/
+  ];
+  return candidates.find(command => exactPatterns.some(pattern => pattern.test(command)))
+    || candidates.find(command => /報名|簽到|出席|活動|查詢|help|menu/i.test(command))
+    || "";
 }
 
 function route_(payload) {
