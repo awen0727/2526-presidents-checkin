@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-25-member-birthdays-20";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-25-member-status-birthdays-21";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -1402,14 +1402,30 @@ function birthdayForMember_(member) {
   if (!name) return "";
   const birthdays = Object.keys(monthlyBirthdays_())
     .reduce((items, month) => items.concat(monthlyBirthdays_()[month]), []);
+  const normalizedName = normalizeBirthdayKey_(name);
+  const normalizedClub = normalizeBirthdayKey_(club);
   const matched = birthdays.find(person =>
-    String(person.name || "").trim() === name
-    && String(person.club || "").trim() === club
+    normalizeBirthdayKey_(person.name) === normalizedName
+    && normalizeBirthdayKey_(person.club) === normalizedClub
   ) || birthdays.find(person =>
-    String(person.name || "").trim() === name
-    && !String(person.club || "").trim()
-  );
+    normalizeBirthdayKey_(person.name) === normalizedName
+    && !normalizeBirthdayKey_(person.club)
+  ) || uniqueBirthdayByClub_(birthdays, normalizedClub);
   return matched ? `${matched.month}/${matched.day}` : "";
+}
+
+function uniqueBirthdayByClub_(birthdays, normalizedClub) {
+  if (!normalizedClub) return null;
+  const matched = birthdays.filter(person => normalizeBirthdayKey_(person.club) === normalizedClub);
+  return matched.length === 1 ? matched[0] : null;
+}
+
+function normalizeBirthdayKey_(value) {
+  return String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/[　｜|]/g, "")
+    .replace(/會長$/g, "")
+    .trim();
 }
 
 function officialAccountHelpText_() {

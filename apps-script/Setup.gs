@@ -52,11 +52,13 @@ function importMembersFromSource() {
   const existing = rows_("Members");
   const existingByClub = {};
   existing.forEach(row => { existingByClub[row.club] = row; });
+  const statusColumn = findHeader_(headers, ["今年參加", "今年有參加", "今年是否參加", "是否參加", "參加與否", "參加狀態", "2526參加", "2526是否參加", "狀態"]);
   const memberRows = values.slice(1).filter(row => String(row[headers.indexOf("會名")] || "").trim());
 
   const output = memberRows.map((sourceRow, index) => {
     const club = String(sourceRow[headers.indexOf("會名")] || "").trim();
     const previous = existingByClub[club] || {};
+    const sourceStatus = statusColumn >= 0 ? participationStatusFromText_(sourceRow[statusColumn]) : "";
     return [
       previous.member_id || `P2526-${String(index + 1).padStart(3, "0")}`,
       String(sourceRow[headers.indexOf("專區")] || "").trim(),
@@ -64,7 +66,7 @@ function importMembersFromSource() {
       club,
       String(sourceRow[headers.indexOf("會長姓名")] || "").trim(),
       normalizePhone_(sourceRow[headers.indexOf("電話")]),
-      previous.status || "participating",
+      sourceStatus || previous.status || "not_participating",
       previous.line_user_id || "",
       previous.line_display_name || "",
       now_()
@@ -78,6 +80,20 @@ function importMembersFromSource() {
   membersSheet.autoResizeColumns(1, SCHEMA.Members.length);
   audit_("import_members", "setup", "Members", `${output.length} members`);
   SpreadsheetApp.getUi().alert(`已匯入 ${output.length} 位會長。完整電話只保存在 Members 分頁。`);
+}
+
+function findHeader_(headers, candidates) {
+  return candidates.map(header => headers.indexOf(header)).find(index => index >= 0) ?? -1;
+}
+
+function participationStatusFromText_(value) {
+  const text = String(value || "").trim().replace(/\s+/g, "");
+  if (!text) return "";
+  if (/^(是|有|參加|今年參加|Y|YES|TRUE|1|V|✓|✔)$/i.test(text)) return "participating";
+  if (/^(否|無|未參加|不參加|今年未參加|N|NO|FALSE|0|X)$/i.test(text)) return "not_participating";
+  if (/未參加|不參加|無參加/.test(text)) return "not_participating";
+  if (/參加/.test(text)) return "participating";
+  return "";
 }
 
 function createFirstEvent() {
