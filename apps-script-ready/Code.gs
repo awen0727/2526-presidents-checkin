@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-target-line-groups-29";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-completed-report-events-30";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -790,6 +790,7 @@ function sendTodayCheckinReminders() {
 function adminAttendanceReport_(payload) {
   const members = memberRows_().filter(isParticipating_);
   const events = eventRows_().sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
+  const completedEvents = events.filter(isEventCompletedForReport_);
   const allAttendance = rows_(SHEETS.ATTENDANCE);
   const requestedEventId = String(payload.eventId || "");
   const selectedEvent = events.find(event => event.event_id === requestedEventId)
@@ -816,12 +817,12 @@ function adminAttendanceReport_(payload) {
       source: record ? record.source : ""
     };
   });
-  const eventIds = events.map(event => event.event_id);
+  const eventIds = completedEvents.map(event => event.event_id);
   const uniqueAttendance = {};
   allAttendance.forEach(record => { uniqueAttendance[`${record.event_id}|${record.member_id}`] = true; });
   const memberSummary = members.map(member => {
     const attendedCount = eventIds.filter(eventId => uniqueAttendance[`${eventId}|${member.member_id}`]).length;
-    const absentCount = Math.max(0, events.length - attendedCount);
+    const absentCount = Math.max(0, completedEvents.length - attendedCount);
     return {
       member_id: member.member_id,
       zone: member.zone,
@@ -830,8 +831,8 @@ function adminAttendanceReport_(payload) {
       name: member.name,
       attended_count: attendedCount,
       absent_count: absentCount,
-      attendance_rate: events.length ? Math.round(attendedCount / events.length * 1000) / 10 : 0,
-      records: events.map(event => {
+      attendance_rate: completedEvents.length ? Math.round(attendedCount / completedEvents.length * 1000) / 10 : 0,
+      records: completedEvents.map(event => {
         const record = allAttendance.find(item => item.event_id === event.event_id && item.member_id === member.member_id);
         return {
           event_id: event.event_id,
@@ -851,10 +852,10 @@ function adminAttendanceReport_(payload) {
     selectedEventMembers,
     members: memberSummary,
     summary: {
-      event_count: events.length,
+      event_count: completedEvents.length,
       member_count: members.length,
       attendance_count: attendanceCount,
-      average_attendance: events.length ? Math.round(attendanceCount / events.length * 10) / 10 : 0
+      average_attendance: completedEvents.length ? Math.round(attendanceCount / completedEvents.length * 10) / 10 : 0
     }
   };
 }
@@ -1021,6 +1022,10 @@ function eventCloseAt_(event) {
   const parsed = new Date(`${event.event_date}T23:59:59+08:00`);
   if (Number.isNaN(parsed.getTime())) throw new Error("活動日期格式不正確");
   return parsed;
+}
+
+function isEventCompletedForReport_(event) {
+  return nowDate_().getTime() > eventCloseAt_(event).getTime();
 }
 
 function nowDate_() {
