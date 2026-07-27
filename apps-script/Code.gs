@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-mention-only-commands-26";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-activity-command-only-27";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -59,23 +59,15 @@ function handleLineWebhook_(payload) {
         replyLineTextSafe_(event.replyToken, bindLineGroupFromEvent_(event, command));
         return;
       }
-      if (/^(群組ID|群組id|groupId|groupid)$/i.test(command)) {
-        replyLineTextSafe_(event.replyToken, lineGroupIdHelpText_(event));
-        return;
-      }
       if (/^解除群組$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, disableLineGroupFromEvent_(event));
-        return;
-      }
-      if (/^(我的ID|我的id|userId|userid|LINE ID|line id)$/i.test(command)) {
-        replyLineTextSafe_(event.replyToken, lineUserIdHelpText_(event));
         return;
       }
       if (/^本月壽星$/.test(command)) {
         replyLineTextSafe_(event.replyToken, monthlyBirthdayText_());
         return;
       }
-      if (/報名|簽到|出席|活動|查詢|help|menu/i.test(command)) {
+      if (/^活動$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, officialAccountHelpText_());
       }
     }
@@ -91,14 +83,11 @@ function parseLineCommand_(text) {
   const candidates = [direct, withoutMention].filter(Boolean);
   const exactPatterns = [
     /^綁定群組(?:\s+(.+))?$/i,
-    /^(群組ID|群組id|groupId|groupid)$/i,
     /^解除群組$/i,
-    /^(我的ID|我的id|userId|userid|LINE ID|line id)$/i,
-    /^本月壽星$/
+    /^本月壽星$/,
+    /^活動$/i
   ];
-  return candidates.find(command => exactPatterns.some(pattern => pattern.test(command)))
-    || candidates.find(command => /報名|簽到|出席|活動|查詢|help|menu/i.test(command))
-    || "";
+  return candidates.find(command => exactPatterns.some(pattern => pattern.test(command))) || "";
 }
 
 function route_(payload) {
@@ -1177,19 +1166,6 @@ function disableLineGroupFromEvent_(event) {
   return "此 LINE 群組已停用，後台不會再推播到這個群組。";
 }
 
-function lineGroupIdHelpText_(event) {
-  const source = (event && event.source) || {};
-  const groupId = source.groupId || source.roomId || "";
-  if (!groupId) return "請在 LINE 群組裡輸入「＠群組ID」，系統才能取得 groupId。";
-  return [
-    "此聊天室 ID：",
-    groupId,
-    "",
-    "若要綁定為推播群組，請在此群組輸入：",
-    "＠綁定群組 會長通知群"
-  ].join("\n");
-}
-
 function upsertLineGroup_(groupId, groupName, groupType, boundByUserId) {
   ensureLineGroupsSheet_();
   const existing = findOne_(SHEETS.LINE_GROUPS, "group_id", groupId);
@@ -1570,18 +1546,7 @@ function officialAccountHelpText_() {
     "",
     "首次使用請先完成 LINE 身分綁定。",
     "查詢本月壽星，請輸入「＠本月壽星」。",
-    "管理者如需查詢 LINE userId，請輸入「＠我的ID」。",
     "如需綁定群組推播，請在群組輸入「＠綁定群組 群組名稱」。"
-  ].join("\n");
-}
-
-function lineUserIdHelpText_(event) {
-  const userId = event && event.source && event.source.userId;
-  return [
-    "您的 LINE userId：",
-    userId || "無法取得 userId，請確認訊息是由個人帳號傳送。",
-    "",
-    "若要設定管理者通知，請將上方 userId 填入 Apps Script 指令碼屬性 ADMIN_LINE_USER_IDS。"
   ].join("\n");
 }
 
