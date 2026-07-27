@@ -268,6 +268,10 @@
       const attendanceButton = makeButton("查看出席人員", "secondary compact-button", () => {
         openEventAttendance(event).catch(error => showMessage(adminMessage, error.message, "error"));
       });
+      const exportEventAttendanceButton = makeButton("匯出 Excel", "secondary compact-button", () => {
+        exportEventAttendance(event).catch(error => showMessage(adminMessage, `Excel 匯出失敗：${error.message}`, "error"));
+      });
+      exportEventAttendanceButton.disabled = Number(event.attendance_count || 0) === 0;
       const groupInviteButton = makeButton("推播報名", "secondary compact-button", () => {
         sendLineAction(event, "adminSendGroupRegistrationInvite", `確定推播報名通知到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
           .catch(error => showMessage(adminMessage, error.message, "error"));
@@ -309,7 +313,7 @@
       const eventHasOpenGate = eventRegistrationStatus(event) === "open" || eventCheckinStatus(event) === "open";
       deleteButton.disabled = eventHasOpenGate;
       deleteButton.title = eventHasOpenGate ? "請先關閉報名與簽到才能刪除" : "永久刪除活動及該場簽到紀錄";
-      actions.append(registrationButton, attendanceButton, groupInviteButton, groupReminderButton, groupCheckinButton, registrationStatusButton, checkinStatusButton, deleteButton);
+      actions.append(registrationButton, attendanceButton, exportEventAttendanceButton, groupInviteButton, groupReminderButton, groupCheckinButton, registrationStatusButton, checkinStatusButton, deleteButton);
       card.append(info, actions);
       list.appendChild(card);
     });
@@ -844,9 +848,8 @@
     await downloadXlsx(rows, fileName, "簽到名單");
   }
 
-  async function exportReportEventAttendance() {
-    const event = report.selectedEvent;
-    const attendees = (report.selectedEventMembers || [])
+  async function exportAttendanceRowsForEvent(event, members) {
+    const attendees = (members || [])
       .filter(member => member.attended)
       .sort((a, b) => String(a.checkin_at || "").localeCompare(String(b.checkin_at || "")));
     if (!event || !attendees.length) return;
@@ -863,6 +866,30 @@
     ];
     const fileName = `${event.event_date}-${safeFileName(event.name)}-出席人員名單.xlsx`;
     await downloadXlsx(rows, fileName, "出席人員名單");
+  }
+
+  async function exportReportEventAttendance() {
+    await exportAttendanceRowsForEvent(report.selectedEvent, report.selectedEventMembers);
+  }
+
+  async function exportEventAttendance(event) {
+    if (localPreview) {
+      const attendees = (state.attendance || []).map(record => ({
+        attended: true,
+        zone: "",
+        club: record.club,
+        name: record.name,
+        checkin_at: record.checkin_at
+      }));
+      if (!attendees.length) throw new Error("該活動目前沒有出席人員可匯出");
+      await exportAttendanceRowsForEvent(event, attendees);
+      return;
+    }
+    const result = await post({ action: "adminAttendanceReport", adminToken: adminToken(), eventId: event.event_id });
+    const attendees = result.selectedEventMembers || [];
+    const attendedCount = attendees.filter(member => member.attended).length;
+    if (!attendedCount) throw new Error("該活動目前沒有出席人員可匯出");
+    await exportAttendanceRowsForEvent(result.selectedEvent || event, attendees);
   }
 
   document.querySelectorAll(".admin-tab").forEach(button => {
