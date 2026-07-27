@@ -885,16 +885,42 @@
     const selectedEvent = state.events.find(item => item.event_id === event.target.value);
     document.getElementById("backfillCheckinAt").value = toDatetimeLocalValue(selectedEvent);
   });
-  document.getElementById("backfillAttendanceButton").addEventListener("click", () => {
+  document.getElementById("backfillAttendanceButton").addEventListener("click", async event => {
     const eventSelect = document.getElementById("backfillEvent");
     const memberSelect = document.getElementById("backfillMember");
     const checkinAt = document.getElementById("backfillCheckinAt").value;
     if (!eventSelect.value) return showMessage(adminMessage, "請選擇要補登的活動", "error");
     if (!memberSelect.value) return showMessage(adminMessage, "請選擇要補登的人員", "error");
-    runAction(
-      { action: "adminBackfillAttendance", eventId: eventSelect.value, memberId: memberSelect.value, checkinAt },
-      `確定補登「${eventSelect.options[eventSelect.selectedIndex].text}」\n人員：${memberSelect.options[memberSelect.selectedIndex].text}？`
-    ).catch(error => showMessage(adminMessage, error.message, "error"));
+    const selectedEventId = eventSelect.value;
+    const selectedEventLabel = eventSelect.options[eventSelect.selectedIndex].text;
+    const selectedMemberLabel = memberSelect.options[memberSelect.selectedIndex].text;
+    if (!window.confirm(`確定補登「${selectedEventLabel}」\n人員：${selectedMemberLabel}？`)) return;
+    event.currentTarget.disabled = true;
+    showMessage(adminMessage, "補登中...", "");
+    try {
+      const result = await post({
+        action: "adminBackfillAttendance",
+        adminToken: adminToken(),
+        eventId: selectedEventId,
+        memberId: memberSelect.value,
+        checkinAt
+      });
+      await load();
+      await loadReport(selectedEventId);
+      document.getElementById("reportEventFilter").value = selectedEventId;
+      showAdminTab("report");
+      showReportView("recent");
+      renderEvent();
+      document.getElementById("backfillMember").value = "";
+      showMessage(adminMessage, `${result.message || "補登完成"}；已切到該活動出席名單`, "success");
+      window.requestAnimationFrame(() => {
+        document.getElementById("reportRecentPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } catch (error) {
+      showMessage(adminMessage, error.message, "error");
+    } finally {
+      event.currentTarget.disabled = false;
+    }
   });
   document.getElementById("manualCheckinButton").addEventListener("click", () => {
     const select = document.getElementById("manualMember");
