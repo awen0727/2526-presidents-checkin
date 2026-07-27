@@ -68,7 +68,7 @@
     "zone": "第一專區",
     "division": "第2分區",
     "club": "尪公",
-    "name": "高靚珀",
+    "name": "高靚珆",
     "needsReview": false
   },
   {
@@ -428,7 +428,7 @@
     "zone": "第六專區",
     "division": "第12分區",
     "club": "崇德",
-    "name": "張淑容",
+    "name": "",
     "needsReview": false
   },
   {
@@ -513,8 +513,8 @@
   },
   {
     "id": "P2526-065",
-    "zone": "第八專區",
-    "division": "第15分區",
+    "zone": "第七專區",
+    "division": "第14分區",
     "club": "菁緻",
     "name": "謝耀德",
     "needsReview": false
@@ -676,7 +676,7 @@
     "zone": "第十專區",
     "division": "第19分區",
     "club": "上繽",
-    "name": "徐玉嬌",
+    "name": "",
     "needsReview": false
   },
   {
@@ -740,7 +740,7 @@
     "zone": "第十一專區",
     "division": "第21分區",
     "club": "金門金龍",
-    "name": "李翌漳",
+    "name": "李翠淳",
     "needsReview": false
   },
   {
@@ -769,8 +769,8 @@
   },
   {
     "id": "P2526-097",
-    "zone": "第十二專區",
-    "division": "第23分區",
+    "zone": "第十一專區",
+    "division": "第22分區",
     "club": "丰勝",
     "name": "簡漪凌",
     "needsReview": false
@@ -860,7 +860,7 @@
     "zone": "第十三專區",
     "division": "第25分區",
     "club": "永安",
-    "name": "王鍾輝",
+    "name": "王鐘輝",
     "needsReview": false
   },
   {
@@ -874,7 +874,7 @@
   {
     "id": "P2526-110",
     "zone": "第十三專區",
-    "division": "第26分區",
+    "division": "第25分區",
     "club": "波麗士",
     "name": "陳嘉偉",
     "needsReview": false
