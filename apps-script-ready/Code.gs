@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-advisor-birthdays-24";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-birthday-command-fallback-25";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -84,7 +84,8 @@ function handleLineWebhook_(payload) {
 }
 
 function parseLineCommand_(text) {
-  const raw = String(text || "").trim();
+  const raw = String(text || "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+  if (/^本月壽星$/.test(raw)) return raw;
   if (!/^[＠@]/.test(raw)) return "";
   const direct = raw.replace(/^[＠@]\s*/, "").trim();
   const withoutMention = direct.replace(/^[^\s　]+[\s　]+/, "").trim();
