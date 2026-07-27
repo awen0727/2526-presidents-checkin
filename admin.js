@@ -328,13 +328,13 @@
     const title = makeElement("div");
     title.append(
       makeElement("strong", "review-name", request.member_name || "姓名待補"),
-      makeElement("span", "muted", `${request.zone} · ${request.division} · ${request.club}會`)
+      makeElement("span", "muted", [request.zone, request.division, `${request.club}會`].filter(Boolean).join(" · "))
     );
-    heading.append(title, makeElement("span", "badge warning-badge", "末四碼不符"));
+    heading.append(title, makeElement("span", "badge warning-badge", "生日待確認"));
     const details = makeElement("div", "review-details");
     details.append(
       makeElement("span", "", `LINE 名稱：${request.line_display_name || "未提供"}`),
-      makeElement("span", "", `輸入末四碼：${request.provided_last4}`),
+      makeElement("span", "", `輸入生日：${request.provided_birthday || "未記錄"}`),
       makeElement("span", "", `目前電話：${request.masked_phone || "未設定"}`)
     );
     const phoneLabel = makeElement("label", "", "確認後的完整手機號碼");
@@ -373,37 +373,21 @@
 
   function buildMemberFilters() {
     const zoneSelect = document.getElementById("memberZoneFilter");
-    const divisionSelect = document.getElementById("memberDivisionFilter");
-    const clubSelect = document.getElementById("memberClubFilter");
     const selectedZone = zoneSelect.value;
-    const selectedDivision = divisionSelect.value;
-    const selectedClub = clubSelect.value;
     const zones = unique(state.members.map(member => member.zone));
     fillSelect(zoneSelect, zones, "全部專區", false);
     zoneSelect.value = zones.includes(selectedZone) ? selectedZone : "";
-
-    const divisions = unique(state.members.map(member => member.division));
-    fillSelect(divisionSelect, divisions, "全部分區", false);
-    divisionSelect.value = divisions.includes(selectedDivision) ? selectedDivision : "";
-
-    const clubs = unique(state.members.map(member => member.club));
-    fillSelect(clubSelect, clubs, "全部會名", false);
-    clubSelect.value = clubs.includes(selectedClub) ? selectedClub : "";
   }
 
   function filteredMembers() {
     const query = document.getElementById("memberSearch").value.trim().toLowerCase();
     const participation = document.getElementById("participationFilter").value;
     const zone = document.getElementById("memberZoneFilter").value;
-    const division = document.getElementById("memberDivisionFilter").value;
-    const club = document.getElementById("memberClubFilter").value;
     return state.members.filter(member => {
-      const text = [member.zone, member.division, member.club, member.name, member.birthday].join(" ").toLowerCase();
+      const text = [member.zone, member.division, member.club, member.name, member.birthday, member.role === "advisor" ? "顧問" : "會長"].join(" ").toLowerCase();
       if (participation === "participating" && !member.participating) return false;
       if (participation === "not_participating" && member.participating) return false;
       if (zone && member.zone !== zone) return false;
-      if (division && member.division !== division) return false;
-      if (club && member.club !== club) return false;
       return !query || text.includes(query);
     });
   }
@@ -430,7 +414,7 @@
       info.append(
         selection,
         makeElement("strong", "", `${member.club}｜${member.name || "姓名待補"}`),
-        makeElement("span", "muted", `${member.zone} · ${member.division}`),
+        makeElement("span", "muted", [member.zone, member.division, member.role === "advisor" ? "顧問" : "會長"].filter(Boolean).join(" · ")),
         makeElement("span", "birthday-state", member.birthday ? `生日：${member.birthday}` : "生日：未設定"),
         makeElement("span", member.participating ? "participating-state" : "not-participating-state", member.participating ? "今年參加" : "今年未參加"),
         makeElement("span", member.bound ? "bound-state" : "unbound-state", member.bound
@@ -604,22 +588,10 @@
 
   function fillPersonFilters() {
     const zoneSelect = document.getElementById("reportZoneFilter");
-    const divisionSelect = document.getElementById("reportDivisionFilter");
-    const clubSelect = document.getElementById("reportClubFilter");
     const selectedZone = zoneSelect.value;
-    const selectedDivision = divisionSelect.value;
-    const selectedClub = clubSelect.value;
     const zones = unique(report.members.map(member => member.zone));
     fillSelect(zoneSelect, zones, "全部專區", false);
     zoneSelect.value = zones.includes(selectedZone) ? selectedZone : "";
-
-    const divisions = unique(report.members.map(member => member.division));
-    fillSelect(divisionSelect, divisions, "全部分區", false);
-    divisionSelect.value = divisions.includes(selectedDivision) ? selectedDivision : "";
-
-    const clubs = unique(report.members.map(member => member.club));
-    fillSelect(clubSelect, clubs, "全部會名", false);
-    clubSelect.value = clubs.includes(selectedClub) ? selectedClub : "";
   }
 
   function renderPersonRecords(member) {
@@ -646,12 +618,8 @@
 
   function filteredReportMembers() {
     const zone = document.getElementById("reportZoneFilter").value;
-    const division = document.getElementById("reportDivisionFilter").value;
-    const club = document.getElementById("reportClubFilter").value;
     return report.members.filter(member => {
       if (zone && member.zone !== zone) return false;
-      if (division && member.division !== division) return false;
-      if (club && member.club !== club) return false;
       return true;
     });
   }
@@ -688,10 +656,6 @@
         showReportView("member");
         document.getElementById("reportZoneFilter").value = member.zone;
         fillPersonFilters();
-        document.getElementById("reportDivisionFilter").value = member.division;
-        fillPersonFilters();
-        document.getElementById("reportClubFilter").value = member.club;
-        renderSelectedPerson();
         openMemberDetail(member);
       });
       nameCell.appendChild(button);
@@ -718,7 +682,7 @@
       ? `符合 ${candidates.length} 位會長`
       : "查無符合條件的會長";
     document.getElementById("reportPersonStats").textContent = candidates.length
-      ? "請繼續選擇專區、分區或會名以查看個人出席日期。"
+      ? "請在下方年度出席統計點選姓名查看個人出席日期。"
       : "請調整篩選條件。";
     summary.classList.remove("hidden");
   }
@@ -895,8 +859,6 @@
   document.getElementById("memberSearch").addEventListener("input", renderMembers);
   document.getElementById("participationFilter").addEventListener("change", renderMembers);
   document.getElementById("memberZoneFilter").addEventListener("change", renderMembers);
-  document.getElementById("memberDivisionFilter").addEventListener("change", renderMembers);
-  document.getElementById("memberClubFilter").addEventListener("change", renderMembers);
   document.getElementById("selectAllMembers").addEventListener("change", event => {
     setVisibleMemberSelection(event.currentTarget.checked);
   });
@@ -908,8 +870,6 @@
   document.getElementById("reportStatusFilter").addEventListener("change", renderEvent);
   document.getElementById("reportMemberSearch").addEventListener("input", renderEvent);
   document.getElementById("reportZoneFilter").addEventListener("change", renderSelectedPerson);
-  document.getElementById("reportDivisionFilter").addEventListener("change", renderSelectedPerson);
-  document.getElementById("reportClubFilter").addEventListener("change", renderSelectedPerson);
   document.getElementById("memberDetailClose").addEventListener("click", () => {
     if (typeof memberDetailDialog.close === "function") memberDetailDialog.close();
     else memberDetailDialog.removeAttribute("open");

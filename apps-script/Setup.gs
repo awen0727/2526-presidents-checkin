@@ -1,6 +1,6 @@
 const SCHEMA = Object.freeze({
-  Members: ["member_id", "zone", "division", "club", "name", "phone", "status", "line_user_id", "line_display_name", "updated_at"],
-  BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
+  Members: ["member_id", "zone", "division", "club", "name", "birthday", "phone", "role", "status", "line_user_id", "line_display_name", "updated_at"],
+  BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_birthday", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
   Events: ["event_id", "event_date", "event_time", "name", "status", "registration_status", "checkin_status", "created_at"],
   EventRegistrations: ["registration_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "status", "registered_at", "canceled_at", "source"],
   Attendance: ["attendance_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "checkin_at", "source"],
@@ -39,34 +39,30 @@ function importMembersFromSource() {
   const sourceId = PropertiesService.getScriptProperties().getProperty("ROSTER_SPREADSHEET_ID");
   if (!sourceId) throw new Error("尚未設定 ROSTER_SPREADSHEET_ID");
 
-  const sourceSheet = SpreadsheetApp.openById(sourceId).getSheets()[0];
-  const values = sourceSheet.getDataRange().getDisplayValues();
-  if (values.length < 2) throw new Error("來源名冊沒有資料");
-  const headers = values[0].map(String);
-  const required = ["專區", "分區", "會名", "會長姓名", "電話"];
-  required.forEach(header => {
-    if (!headers.includes(header)) throw new Error(`來源名冊缺少欄位：${header}`);
-  });
+  const sourceBook = SpreadsheetApp.openById(sourceId);
+  const importedRows = sourceBook.getSheets()
+    .map(sheet => sourceRowsFromSheet_(sheet))
+    .reduce((all, rows) => all.concat(rows), []);
+  if (!importedRows.length) throw new Error("來源名冊沒有可匯入的人員資料，請確認至少有專區、會名、姓名、生日欄位");
 
+  ensureSheet_("Members");
   const membersSheet = sheet_("Members");
   const existing = rows_("Members");
-  const existingByClub = {};
-  existing.forEach(row => { existingByClub[row.club] = row; });
-  const statusColumn = findHeader_(headers, ["今年參加", "今年有參加", "今年是否參加", "是否參加", "參加與否", "參加狀態", "2526參加", "2526是否參加", "狀態"]);
-  const memberRows = values.slice(1).filter(row => String(row[headers.indexOf("會名")] || "").trim());
+  const existingByKey = {};
+  existing.forEach(row => { existingByKey[memberKey_(row)] = row; });
 
-  const output = memberRows.map((sourceRow, index) => {
-    const club = String(sourceRow[headers.indexOf("會名")] || "").trim();
-    const previous = existingByClub[club] || {};
-    const sourceStatus = statusColumn >= 0 ? participationStatusFromText_(sourceRow[statusColumn]) : "";
+  const output = importedRows.map((sourceRow, index) => {
+    const previous = existingByKey[memberKey_(sourceRow)] || {};
     return [
       previous.member_id || `P2526-${String(index + 1).padStart(3, "0")}`,
-      String(sourceRow[headers.indexOf("專區")] || "").trim(),
-      String(sourceRow[headers.indexOf("分區")] || "").trim(),
-      club,
-      String(sourceRow[headers.indexOf("會長姓名")] || "").trim(),
-      normalizePhone_(sourceRow[headers.indexOf("電話")]),
-      sourceStatus || previous.status || "not_participating",
+      sourceRow.zone,
+      sourceRow.division,
+      sourceRow.club,
+      sourceRow.name,
+      normalizeBirthday_(sourceRow.birthday) || birthdayForMember_(sourceRow),
+      normalizePhone_(sourceRow.phone),
+      sourceRow.role || previous.role || "president",
+      sourceRow.status || previous.status || "participating",
       previous.line_user_id || "",
       previous.line_display_name || "",
       now_()
@@ -79,7 +75,39 @@ function importMembersFromSource() {
   if (output.length) membersSheet.getRange(2, 1, output.length, SCHEMA.Members.length).setValues(output);
   membersSheet.autoResizeColumns(1, SCHEMA.Members.length);
   audit_("import_members", "setup", "Members", `${output.length} members`);
-  SpreadsheetApp.getUi().alert(`已匯入 ${output.length} 位會長。完整電話只保存在 Members 分頁。`);
+  SpreadsheetApp.getUi().alert(`已匯入 ${output.length} 位人員。生日已寫入 Members 分頁，顧問也可登入報名與簽到。`);
+}
+
+function sourceRowsFromSheet_(sourceSheet) {
+  const values = sourceSheet.getDataRange().getDisplayValues();
+  if (values.length < 2) return [];
+  const headers = values[0].map(header => String(header || "").trim());
+  const zoneColumn = findHeader_(headers, ["專區", "所屬專區"]);
+  const divisionColumn = findHeader_(headers, ["分區", "所屬分區"]);
+  const clubColumn = findHeader_(headers, ["會名", "分會", "社名", "單位"]);
+  const nameColumn = findHeader_(headers, ["會長姓名", "姓名", "人員姓名", "顧問姓名"]);
+  const birthdayColumn = findHeader_(headers, ["生日", "生日日期", "出生日期", "生日(月/日)", "生日月日"]);
+  const phoneColumn = findHeader_(headers, ["電話", "手機", "手機號碼", "聯絡電話"]);
+  const statusColumn = findHeader_(headers, ["今年參加", "今年有參加", "今年是否參加", "是否參加", "參加與否", "參加狀態", "2526參加", "2526是否參加", "狀態"]);
+  const roleColumn = findHeader_(headers, ["身分", "身份", "角色", "類別"]);
+  if (zoneColumn < 0 || clubColumn < 0 || nameColumn < 0) return [];
+  const defaultRole = /顧問/.test(sourceSheet.getName()) ? "advisor" : "president";
+  return values.slice(1).map(row => {
+    const name = String(row[nameColumn] || "").trim();
+    const club = String(row[clubColumn] || "").trim();
+    if (!name && !club) return null;
+    const roleText = roleColumn >= 0 ? String(row[roleColumn] || "").trim() : "";
+    return {
+      zone: String(row[zoneColumn] || "").trim(),
+      division: divisionColumn >= 0 ? String(row[divisionColumn] || "").trim() : "",
+      club,
+      name,
+      birthday: birthdayColumn >= 0 ? row[birthdayColumn] : "",
+      phone: phoneColumn >= 0 ? row[phoneColumn] : "",
+      role: roleFromText_(roleText) || defaultRole,
+      status: statusColumn >= 0 ? participationStatusFromText_(row[statusColumn]) : "participating"
+    };
+  }).filter(Boolean);
 }
 
 function findHeader_(headers, candidates) {
@@ -94,6 +122,38 @@ function participationStatusFromText_(value) {
   if (/未參加|不參加|無參加/.test(text)) return "not_participating";
   if (/參加/.test(text)) return "participating";
   return "";
+}
+
+function roleFromText_(value) {
+  const text = String(value || "").trim();
+  if (/顧問|advisor/i.test(text)) return "advisor";
+  if (/會長|president/i.test(text)) return "president";
+  return "";
+}
+
+function memberKey_(member) {
+  return [
+    String((member && member.club) || "").trim(),
+    String((member && member.name) || "").trim()
+  ].join("|");
+}
+
+function normalizeBirthday_(value) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return "";
+  const text = raw
+    .replace(/[．.。]/g, "")
+    .replace(/[年月]/g, "/")
+    .replace(/日/g, "")
+    .replace(/／/g, "/")
+    .replace(/\s+/g, "");
+  let match = text.match(/^(?:\d{4}\/)?(\d{1,2})\/(\d{1,2})$/);
+  if (!match) match = text.match(/^(\d{1,2})(\d{2})$/);
+  if (!match) return "";
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (!month || !day || month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${month}/${day}`;
 }
 
 function createFirstEvent() {

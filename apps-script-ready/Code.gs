@@ -9,8 +9,8 @@ const SHEETS = Object.freeze({
 });
 
 const CODE_SCHEMA = Object.freeze({
-  Members: ["member_id", "zone", "division", "club", "name", "phone", "status", "line_user_id", "line_display_name", "updated_at"],
-  BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
+  Members: ["member_id", "zone", "division", "club", "name", "birthday", "phone", "role", "status", "line_user_id", "line_display_name", "updated_at"],
+  BindingRequests: ["request_id", "member_id", "line_user_id", "line_display_name", "provided_birthday", "provided_last4", "status", "created_at", "resolved_at", "resolved_by"],
   Events: ["event_id", "event_date", "event_time", "name", "status", "registration_status", "checkin_status", "created_at"],
   EventRegistrations: ["registration_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "status", "registered_at", "canceled_at", "source"],
   Attendance: ["attendance_id", "event_id", "member_id", "name_snapshot", "club_snapshot", "checkin_at", "source"],
@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-25-member-status-birthdays-21";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-birthday-login-advisors-22";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -148,10 +148,10 @@ function route_(payload) {
 
 function getSession_(payload) {
   expireStaleOpenEvents_();
-  const line = verifyLineIdentity_(payload);
-  const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+  const auth = memberAuthFromPayload_(payload, { allowMissing: true });
+  const member = auth.member;
   const participating = Boolean(member && isParticipating_(member));
-  const pending = findRows_(SHEETS.BINDINGS, row => row.line_user_id === line.sub && row.status === "pending").length > 0;
+  const pending = Boolean(auth.line && findRows_(SHEETS.BINDINGS, row => row.line_user_id === auth.line.sub && row.status === "pending").length > 0);
   const event = getOpenEvent_();
   const registrations = participating ? registrationRows_().filter(row =>
     row.member_id === member.member_id && row.status === "registered"
@@ -170,13 +170,14 @@ function getSession_(payload) {
     })) : [],
     bindingPending: pending,
     participationInactive: Boolean(member && !participating),
-    alreadyCheckedIn
+    alreadyCheckedIn,
+    authMode: auth.source || ""
   };
 }
 
 function getRoster_() {
   return {
-    members: rows_(SHEETS.MEMBERS)
+    members: memberRows_()
       .filter(isParticipating_)
       .map(publicMember_)
   };
@@ -185,7 +186,7 @@ function getRoster_() {
 function dashboard_() {
   expireStaleOpenEvents_();
   const event = getOpenEvent_();
-  const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
+  const members = memberRows_().filter(isParticipating_);
   if (!event) {
     return { event: null, totalCount: members.length, attendedCount: 0, absentCount: members.length, attendanceRate: 0, list: [] };
   }
@@ -216,29 +217,29 @@ function dashboard_() {
 }
 
 function requestBinding_(payload) {
+  ensureSheet_(SHEETS.BINDINGS);
   const line = verifyLineIdentity_(payload);
   const memberId = cleanText_(payload.memberId, 30, "會長編號");
-  const phoneLast4 = String(payload.phoneLast4 || "").replace(/\D/g, "");
-  if (!/^\d{4}$/.test(phoneLast4)) throw new Error("手機末四碼格式不正確");
+  const birthday = normalizeBirthday_(payload.birthday);
+  if (!birthday) throw new Error("生日格式不正確，請輸入月日，例如 7/27 或 0727");
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    if (findOne_(SHEETS.MEMBERS, "line_user_id", line.sub)) throw new Error("此 LINE 帳號已綁定會長資料");
-    const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-    if (!member || !isParticipating_(member)) throw new Error("此會長未列入今年參加名單");
-    if (member.line_user_id) throw new Error("此會長資料已綁定其他 LINE 帳號，請聯絡管理者");
+    if (findMemberByLineUserId_(line.sub)) throw new Error("此 LINE 帳號已綁定人員資料");
+    const member = findMemberById_(memberId);
+    if (!member || !isParticipating_(member)) throw new Error("此人員未列入今年參加名單");
+    if (member.line_user_id) throw new Error("此人員資料已綁定其他 LINE 帳號，請聯絡管理者");
     const existing = findRows_(SHEETS.BINDINGS, row => row.line_user_id === line.sub && row.status === "pending")[0];
     if (existing) return { status: "pending", message: "申請已送出，請等待管理者確認" };
 
-    const storedPhone = normalizePhone_(member.phone);
-    if (storedPhone.length >= 4 && storedPhone.slice(-4) === phoneLast4) {
+    if (birthdayMatchesMember_(member, birthday)) {
       updateRow_(SHEETS.MEMBERS, member._row, {
         line_user_id: line.sub,
         line_display_name: cleanText_(line.name || "", 80),
         updated_at: now_()
       });
-      audit_("binding_auto_approved", line.sub, member.member_id, "last4 matched");
+      audit_("binding_auto_approved", line.sub, member.member_id, "birthday matched");
       return { status: "approved", message: "身分核對成功，LINE 已完成綁定" };
     }
 
@@ -247,27 +248,28 @@ function requestBinding_(payload) {
       member_id: member.member_id,
       line_user_id: line.sub,
       line_display_name: cleanText_(line.name || "", 80),
-      provided_last4: phoneLast4,
+      provided_birthday: birthday,
+      provided_last4: "",
       status: "pending",
       created_at: now_(),
       resolved_at: "",
       resolved_by: ""
     });
-    audit_("binding_requested", line.sub, member.member_id, "last4 mismatch");
-    notifyAdminsSafe_(`2526會長聯誼會待審核\n${member.club}｜${member.name || "姓名待補"}\n手機末四碼不符，請至後台身分審核。`);
-    return { status: "pending", message: "末四碼未能核對，已交由管理者確認" };
+    audit_("binding_requested", line.sub, member.member_id, "birthday mismatch");
+    notifyAdminsSafe_(`2526會長聯誼會待審核\n${member.club}｜${member.name || "姓名待補"}\n生日核對不符，請至後台身分審核。`);
+    return { status: "pending", message: "生日未能核對，已交由管理者確認" };
   } finally {
     lock.releaseLock();
   }
 }
 
 function registerEvent_(payload) {
-  const line = verifyLineIdentity_(payload);
+  const auth = memberAuthFromPayload_(payload);
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+    const member = auth.member;
     if (!member || !isParticipating_(member)) throw new Error("您未列入今年參加名單");
     const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
     if (!event) throw new Error("找不到活動");
@@ -283,7 +285,7 @@ function registerEvent_(payload) {
         status: "registered",
         registered_at: now_(),
         canceled_at: "",
-        source: "LINE"
+        source: auth.source
       });
     } else {
       append_(SHEETS.REGISTRATIONS, {
@@ -295,10 +297,10 @@ function registerEvent_(payload) {
         status: "registered",
         registered_at: now_(),
         canceled_at: "",
-        source: "LINE"
+        source: auth.source
       });
     }
-    audit_("event_registered", member.member_id, event.event_id, "LINE");
+    audit_("event_registered", member.member_id, event.event_id, auth.source);
     pushLineTextSafe_(member.line_user_id, registrationConfirmationText_(event, member));
     notifyAdminsSafe_(`活動報名通知\n${event.event_date} ${event.name}\n${member.club}｜${member.name || "姓名待補"} 已報名。`);
     return { message: `${event.name} 報名成功` };
@@ -308,12 +310,12 @@ function registerEvent_(payload) {
 }
 
 function cancelRegistration_(payload) {
-  const line = verifyLineIdentity_(payload);
+  const auth = memberAuthFromPayload_(payload);
   const eventId = cleanText_(payload.eventId, 60, "活動編號");
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+    const member = auth.member;
     if (!member || !isParticipating_(member)) throw new Error("您未列入今年參加名單");
     const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
     if (!event) throw new Error("找不到活動");
@@ -326,7 +328,7 @@ function cancelRegistration_(payload) {
       status: "canceled",
       canceled_at: now_()
     });
-    audit_("event_registration_canceled", member.member_id, event.event_id, "LINE");
+    audit_("event_registration_canceled", member.member_id, event.event_id, auth.source);
     pushLineTextSafe_(member.line_user_id, registrationCanceledText_(event, member));
     notifyAdminsSafe_(`活動報名取消\n${event.event_date} ${event.name}\n${member.club}｜${member.name || "姓名待補"} 已取消報名。`);
     return { message: `${event.name} 已取消報名` };
@@ -336,11 +338,11 @@ function cancelRegistration_(payload) {
 }
 
 function checkIn_(payload) {
-  const line = verifyLineIdentity_(payload);
+  const auth = memberAuthFromPayload_(payload);
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const member = findOne_(SHEETS.MEMBERS, "line_user_id", line.sub);
+    const member = auth.member;
     if (!member || !isParticipating_(member)) throw new Error("您未列入今年參加名單");
     const event = getOpenEvent_();
     if (!event) throw new Error("目前沒有開放簽到的活動");
@@ -355,9 +357,9 @@ function checkIn_(payload) {
       name_snapshot: member.name,
       club_snapshot: member.club,
       checkin_at: now_(),
-      source: "LINE"
+      source: auth.source
     });
-    audit_("check_in", member.member_id, event.event_id, "LINE");
+    audit_("check_in", member.member_id, event.event_id, auth.source);
     return { message: `${member.name || member.club + "會會長"}，簽到成功！` };
   } finally {
     lock.releaseLock();
@@ -366,7 +368,8 @@ function checkIn_(payload) {
 
 function adminOverview_() {
   expireStaleOpenEvents_();
-  const members = rows_(SHEETS.MEMBERS);
+  ensureSheet_(SHEETS.BINDINGS);
+  const members = memberRows_();
   const events = eventRows_();
   const registrationCounts = eventRegistrationCounts_(registrationRows_());
   const attendanceCounts = eventAttendanceCounts_(rows_(SHEETS.ATTENDANCE));
@@ -384,7 +387,7 @@ function adminOverview_() {
       division: member.division || "",
       club: member.club || "",
       line_display_name: request.line_display_name || "",
-      provided_last4: request.provided_last4 || "",
+      provided_birthday: request.provided_birthday || request.provided_last4 || "",
       masked_phone: maskPhone_(member.phone),
       created_at: request.created_at
     };
@@ -423,6 +426,7 @@ function adminOverview_() {
       club: member.club,
       name: member.name,
       birthday: birthdayForMember_(member),
+      role: memberRole_(member),
       masked_phone: maskPhone_(member.phone),
       participating: isParticipating_(member),
       bound: Boolean(member.line_user_id),
@@ -433,14 +437,15 @@ function adminOverview_() {
 }
 
 function adminApproveBinding_(payload) {
+  ensureSheet_(SHEETS.BINDINGS);
   const requestId = cleanText_(payload.requestId, 40, "申請編號");
   const request = findOne_(SHEETS.BINDINGS, "request_id", requestId);
   if (!request || request.status !== "pending") throw new Error("找不到待確認申請");
-  const member = findOne_(SHEETS.MEMBERS, "member_id", request.member_id);
-  if (!member || !isParticipating_(member)) throw new Error("此會長未列入今年參加名單");
-  if (member.line_user_id && member.line_user_id !== request.line_user_id) throw new Error("此會長已綁定其他 LINE 帳號");
-  const lineOwner = findOne_(SHEETS.MEMBERS, "line_user_id", request.line_user_id);
-  if (lineOwner && lineOwner.member_id !== member.member_id) throw new Error("此 LINE 帳號已綁定其他會長");
+  const member = findMemberById_(request.member_id);
+  if (!member || !isParticipating_(member)) throw new Error("此人員未列入今年參加名單");
+  if (member.line_user_id && member.line_user_id !== request.line_user_id) throw new Error("此人員已綁定其他 LINE 帳號");
+  const lineOwner = findMemberByLineUserId_(request.line_user_id);
+  if (lineOwner && lineOwner.member_id !== member.member_id) throw new Error("此 LINE 帳號已綁定其他人員");
 
   const phone = normalizePhone_(payload.phone);
   if (phone && (phone.length < 8 || phone.length > 15)) throw new Error("完整電話格式不正確");
@@ -460,6 +465,7 @@ function adminApproveBinding_(payload) {
 }
 
 function adminRejectBinding_(payload) {
+  ensureSheet_(SHEETS.BINDINGS);
   const requestId = cleanText_(payload.requestId, 40, "申請編號");
   const request = findOne_(SHEETS.BINDINGS, "request_id", requestId);
   if (!request || request.status !== "pending") throw new Error("找不到待確認申請");
@@ -565,8 +571,8 @@ function adminManualCheckIn_(payload) {
   const memberId = cleanText_(payload.memberId, 30, "會長編號");
   const event = getOpenEvent_();
   if (!event) throw new Error("目前沒有開放簽到的活動");
-  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-  if (!member || !isParticipating_(member)) throw new Error("此會長未列入今年參加名單");
+  const member = findMemberById_(memberId);
+  if (!member || !isParticipating_(member)) throw new Error("此人員未列入今年參加名單");
   const duplicate = findRows_(SHEETS.ATTENDANCE, row =>
     row.event_id === event.event_id && row.member_id === member.member_id
   )[0];
@@ -598,8 +604,8 @@ function adminUpdateMemberPhone_(payload) {
   const memberId = cleanText_(payload.memberId, 30, "會長編號");
   const phone = normalizePhone_(payload.phone);
   if (phone.length < 8 || phone.length > 15) throw new Error("完整電話格式不正確");
-  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-  if (!member) throw new Error("找不到會長資料");
+  const member = findMemberById_(memberId);
+  if (!member) throw new Error("找不到人員資料");
   updateRow_(SHEETS.MEMBERS, member._row, { phone, updated_at: now_() });
   audit_("member_phone_updated", "admin", memberId, "phone updated");
   return { message: "電話已更新" };
@@ -607,9 +613,9 @@ function adminUpdateMemberPhone_(payload) {
 
 function adminUnbindMember_(payload) {
   const memberId = cleanText_(payload.memberId, 30, "會長編號");
-  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-  if (!member) throw new Error("找不到會長資料");
-  if (!member.line_user_id) throw new Error("此會長尚未綁定 LINE");
+  const member = findMemberById_(memberId);
+  if (!member) throw new Error("找不到人員資料");
+  if (!member.line_user_id) throw new Error("此人員尚未綁定 LINE");
   updateRow_(SHEETS.MEMBERS, member._row, {
     line_user_id: "",
     line_display_name: "",
@@ -622,8 +628,8 @@ function adminUnbindMember_(payload) {
 function adminSetParticipation_(payload) {
   const memberId = cleanText_(payload.memberId, 30, "會長編號");
   const participating = payload.participating === true;
-  const member = findOne_(SHEETS.MEMBERS, "member_id", memberId);
-  if (!member) throw new Error("找不到會長資料");
+  const member = findMemberById_(memberId);
+  if (!member) throw new Error("找不到人員資料");
   updateRow_(SHEETS.MEMBERS, member._row, {
     status: participating ? "participating" : "not_participating",
     updated_at: now_()
@@ -637,7 +643,7 @@ function adminSetBulkParticipation_(payload) {
   const participating = payload.participating === true;
   const uniqueIds = Array.from(new Set(memberIds.map(id => cleanText_(id, 30, "會長編號")).filter(Boolean)));
   if (!uniqueIds.length) throw new Error("請先選擇會長");
-  const members = rows_(SHEETS.MEMBERS);
+  const members = memberRows_();
   const memberById = {};
   members.forEach(member => { memberById[member.member_id] = member; });
   let updated = 0;
@@ -659,7 +665,7 @@ function adminRegistrationReport_(payload) {
   const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
   if (!event) throw new Error("找不到活動");
   const memberById = {};
-  rows_(SHEETS.MEMBERS).forEach(member => { memberById[member.member_id] = member; });
+  memberRows_().forEach(member => { memberById[member.member_id] = member; });
   const registrants = registrationRows_()
     .filter(row => row.event_id === eventId && row.status === "registered")
     .map(row => {
@@ -684,7 +690,7 @@ function adminRegistrationReport_(payload) {
 }
 
 function adminLineStatus_() {
-  const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
+  const members = memberRows_().filter(isParticipating_);
   return lineStatusFromMembers_(members);
 }
 
@@ -703,7 +709,7 @@ function lineStatusFromMembers_(members) {
 function adminSendRegistrationInvite_(payload) {
   const event = requireEvent_(payload.eventId);
   if (!isEventRegisterable_(event)) throw new Error("此活動已過期，無法推播報名通知");
-  const members = rows_(SHEETS.MEMBERS).filter(member => isParticipating_(member) && member.line_user_id);
+  const members = memberRows_().filter(member => isParticipating_(member) && member.line_user_id);
   const message = registrationInviteText_(event);
   const result = multicastLineText_(members.map(member => member.line_user_id), message);
   audit_("line_registration_invite", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
@@ -801,7 +807,7 @@ function sendTodayCheckinReminders() {
 }
 
 function adminAttendanceReport_(payload) {
-  const members = rows_(SHEETS.MEMBERS).filter(isParticipating_);
+  const members = memberRows_().filter(isParticipating_);
   const events = eventRows_().sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
   const allAttendance = rows_(SHEETS.ATTENDANCE);
   const requestedEventId = String(payload.eventId || "");
@@ -926,6 +932,22 @@ function ensureLineGroupsSheet_() {
   ensureSheet_(SHEETS.LINE_GROUPS);
 }
 
+function memberRows_() {
+  ensureSheet_(SHEETS.MEMBERS);
+  return rows_(SHEETS.MEMBERS);
+}
+
+function findMemberById_(memberId) {
+  const id = String(memberId || "");
+  return memberRows_().find(row => String(row.member_id) === id) || null;
+}
+
+function findMemberByLineUserId_(lineUserId) {
+  const id = String(lineUserId || "");
+  if (!id) return null;
+  return memberRows_().find(row => String(row.line_user_id) === id) || null;
+}
+
 function ensureSheet_(name) {
   const spreadsheet = spreadsheet_();
   let sheet = spreadsheet.getSheetByName(name);
@@ -1042,7 +1064,7 @@ function eventAttendanceCounts_(attendanceRows) {
 
 function registeredMembersForEvent_(eventId) {
   const memberById = {};
-  rows_(SHEETS.MEMBERS).filter(isParticipating_).forEach(member => {
+  memberRows_().filter(isParticipating_).forEach(member => {
     if (member.line_user_id) memberById[member.member_id] = member;
   });
   const seen = {};
@@ -1253,7 +1275,7 @@ function groupCheckinReminderText_(event) {
 function monthlyBirthdayText_() {
   const month = Number(Utilities.formatDate(new Date(), "Asia/Taipei", "M"));
   const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
-  const birthdays = monthlyBirthdays_()[month] || [];
+  const birthdays = monthlyBirthdayRows_(month);
   if (!birthdays.length) return `${monthNames[month - 1]}本月尚無壽星資料。`;
   const lines = birthdays
     .slice()
@@ -1268,6 +1290,29 @@ function monthlyBirthdayText_() {
     "",
     "祝福本月壽星生日快樂，健康順心！"
   ].join("\n");
+}
+
+function monthlyBirthdayRows_(month) {
+  try {
+    const rows = memberRows_()
+      .filter(isParticipating_)
+      .map(member => {
+        const birthday = normalizeBirthday_(member.birthday);
+        if (!birthday) return null;
+        const parts = birthday.split("/").map(Number);
+        return {
+          club: member.club || "",
+          name: member.name || "",
+          month: parts[0],
+          day: parts[1]
+        };
+      })
+      .filter(item => item && item.month === month && item.name);
+    if (rows.length) return rows;
+  } catch (_error) {
+    // Webhook help should still work before the spreadsheet schema is fully upgraded.
+  }
+  return monthlyBirthdays_()[month] || [];
 }
 
 function monthlyBirthdays_() {
@@ -1397,6 +1442,8 @@ function monthlyBirthdays_() {
 }
 
 function birthdayForMember_(member) {
+  const sheetBirthday = normalizeBirthday_(member && member.birthday);
+  if (sheetBirthday) return sheetBirthday;
   const club = String((member && member.club) || "").trim();
   const name = String((member && member.name) || "").trim();
   if (!name) return "";
@@ -1426,6 +1473,38 @@ function normalizeBirthdayKey_(value) {
     .replace(/[　｜|]/g, "")
     .replace(/會長$/g, "")
     .trim();
+}
+
+function normalizeBirthday_(value) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return "";
+  const text = raw
+    .replace(/[．.。]/g, "")
+    .replace(/[年月]/g, "/")
+    .replace(/日/g, "")
+    .replace(/／/g, "/")
+    .replace(/\s+/g, "");
+  let match = text.match(/^(?:\d{4}\/)?(\d{1,2})\/(\d{1,2})$/);
+  if (!match) {
+    match = text.match(/^(\d{1,2})(\d{2})$/);
+  }
+  if (!match) return "";
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (!month || !day || month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${month}/${day}`;
+}
+
+function birthdayMatchesMember_(member, value) {
+  const expected = normalizeBirthday_(birthdayForMember_(member));
+  const actual = normalizeBirthday_(value);
+  return Boolean(expected && actual && expected === actual);
+}
+
+function memberRole_(member) {
+  const role = String((member && member.role) || "").trim();
+  if (/顧問|advisor/i.test(role)) return "advisor";
+  return "president";
 }
 
 function officialAccountHelpText_() {
@@ -1565,6 +1644,27 @@ function expireStaleOpenEvents_() {
   });
 }
 
+function memberAuthFromPayload_(payload, options) {
+  const allowMissing = Boolean(options && options.allowMissing);
+  const memberId = String((payload && payload.memberId) || "").trim();
+  const birthday = normalizeBirthday_(payload && payload.birthday);
+  if (memberId && birthday) {
+    const member = findMemberById_(memberId);
+    if (!member) throw new Error("找不到人員資料");
+    if (!birthdayMatchesMember_(member, birthday)) throw new Error("生日核對不符，請重新確認");
+    return { member, line: null, source: "BIRTHDAY" };
+  }
+  try {
+    const line = verifyLineIdentity_(payload);
+    return { member: findMemberByLineUserId_(line.sub), line, source: "LINE" };
+  } catch (error) {
+    if (allowMissing && String(error && error.message).includes("LINE 登入憑證")) {
+      return { member: null, line: null, source: "" };
+    }
+    throw error;
+  }
+}
+
 function verifyLineIdentity_(payload) {
   const idToken = String((payload && payload.idToken) || "").trim();
   const accessToken = String((payload && payload.accessToken) || "").trim();
@@ -1622,7 +1722,8 @@ function publicMember_(member) {
     zone: member.zone,
     division: member.division,
     club: member.club,
-    name: member.name
+    name: member.name,
+    role: memberRole_(member)
   };
 }
 

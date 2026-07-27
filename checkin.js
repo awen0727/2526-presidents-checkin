@@ -7,9 +7,10 @@
   let idToken = "";
   let accessToken = "";
   let members = [];
+  let birthdayAuth = null;
 
   function linePayload(action, extra) {
-    return { action, idToken, accessToken, ...extra };
+    return { action, idToken, accessToken, ...(birthdayAuth || {}), ...extra };
   }
 
   function showPanel(id) {
@@ -43,6 +44,20 @@
     return `${formatEventDate(event.event_date)} ${event.event_time || ""}`.trim();
   }
 
+  function normalizeBirthdayInput(value) {
+    const text = String(value || "")
+      .replace(/[．.。]/g, "")
+      .replace(/[年月]/g, "/")
+      .replace(/日/g, "")
+      .replace(/／/g, "/")
+      .replace(/\s+/g, "");
+    const slash = text.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (slash) return `${Number(slash[1])}/${Number(slash[2])}`;
+    const compact = text.match(/^(\d{1,2})(\d{2})$/);
+    if (compact) return `${Number(compact[1])}/${Number(compact[2])}`;
+    return text;
+  }
+
   async function loadRoster() {
     const result = await post({ action: "getRoster" });
     members = result.members || [];
@@ -52,9 +67,9 @@
 
   function renderSession(session) {
     if (session.member) {
-      document.getElementById("memberArea").textContent = `${session.member.zone} · ${session.member.division}`;
+      document.getElementById("memberArea").textContent = [session.member.zone, session.member.division].filter(Boolean).join(" · ");
       document.getElementById("memberName").textContent = session.member.name || "姓名待補";
-      document.getElementById("memberClub").textContent = `${session.member.club}會 會長`;
+      document.getElementById("memberClub").textContent = `${session.member.club}｜${session.member.role === "advisor" ? "顧問" : "會長"}`;
       document.getElementById("eventBox").textContent = session.participationInactive
         ? "目前列為今年未參加，若資料有誤請聯絡管理者。"
         : session.event
@@ -66,7 +81,7 @@
       showPanel("memberHomePanel");
       showMessage(statusMessage, session.participationInactive
         ? "今年未參加，無法簽到或報名"
-        : session.alreadyCheckedIn ? "身分已確認，本場已簽到" : "LINE 身分已綁定",
+        : session.alreadyCheckedIn ? "身分已確認，本場已簽到" : session.authMode === "BIRTHDAY" ? "生日核對成功" : "LINE 身分已綁定",
       session.participationInactive ? "error" : "success");
       return;
     }
@@ -76,7 +91,7 @@
       return;
     }
     showPanel("bindingPanel");
-    showMessage(statusMessage, "請完成首次身分核對", "");
+    showMessage(statusMessage, idToken || accessToken ? "請完成首次 LINE 綁定" : "請選擇本人資料並輸入生日", "");
   }
 
   function renderRegistrationEvents(events, disabled) {
@@ -136,37 +151,37 @@
   }
 
   document.getElementById("zoneSelect").addEventListener("change", event => {
-    const divisions = unique(members.filter(member => member.zone === event.target.value).map(member => member.division));
-    fillSelect(document.getElementById("divisionSelect"), divisions, "請選擇分區");
-    fillSelect(document.getElementById("memberSelect"), [], "請先選分區");
-  });
-
-  document.getElementById("divisionSelect").addEventListener("change", event => {
-    const zone = document.getElementById("zoneSelect").value;
     const choices = members
-      .filter(member => member.zone === zone && member.division === event.target.value)
+      .filter(member => member.zone === event.target.value)
       .sort((a, b) => compareLabels(a.club, b.club) || compareLabels(a.name, b.name));
     const select = document.getElementById("memberSelect");
-    select.replaceChildren(new Option("請選擇分會與會長", ""));
-    choices.forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}`, member.member_id)));
+    select.replaceChildren(new Option("請選擇分會／姓名", ""));
+    choices.forEach(member => select.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}${member.role === "advisor" ? "（顧問）" : ""}`, member.member_id)));
     select.disabled = choices.length === 0;
   });
 
-  document.getElementById("phoneLast4").addEventListener("input", event => {
-    event.target.value = event.target.value.replace(/\D/g, "").slice(0, 4);
+  document.getElementById("birthdayInput").addEventListener("input", event => {
+    event.target.value = event.target.value.replace(/[^\d/／年月日．.。]/g, "").slice(0, 10);
   });
 
   document.getElementById("bindingButton").addEventListener("click", async event => {
     const memberId = document.getElementById("memberSelect").value;
-    const phoneLast4 = document.getElementById("phoneLast4").value;
+    const birthday = normalizeBirthdayInput(document.getElementById("birthdayInput").value);
     if (!memberId) return showMessage(statusMessage, "請選擇您的分會與姓名", "error");
-    if (!/^\d{4}$/.test(phoneLast4)) return showMessage(statusMessage, "請輸入手機末四碼", "error");
+    if (!birthday) return showMessage(statusMessage, "請輸入生日，例如 7/27 或 0727", "error");
     event.currentTarget.disabled = true;
     try {
-      const result = await post(linePayload("requestBinding", { memberId, phoneLast4 }));
-      if (result.status === "approved") await loadSession();
-      else renderSession({ member: null, bindingPending: true });
+      birthdayAuth = { memberId, birthday };
+      if (idToken || accessToken) {
+        const result = await post(linePayload("requestBinding", { memberId, birthday }));
+        if (result.status === "approved") await loadSession();
+        else renderSession({ member: null, bindingPending: true });
+      } else {
+        const session = await post(linePayload("getSession", { memberId, birthday }));
+        renderSession(session);
+      }
     } catch (error) {
+      birthdayAuth = null;
       showMessage(statusMessage, error.message, "error");
     } finally {
       event.currentTarget.disabled = false;
@@ -215,19 +230,27 @@
     }
     await loadRoster();
     if (!config.liffId || config.liffId.includes("PASTE_")) throw new Error("尚未設定 LIFF ID");
-    await liff.init({ liffId: config.liffId });
-    if (!liff.isLoggedIn()) return liff.login({ redirectUri: window.location.href });
-    idToken = liff.getIDToken();
-    accessToken = liff.getAccessToken() || "";
-    if (!idToken && !accessToken) throw new Error("無法取得 LINE 登入憑證，請確認 LIFF 已啟用 openid 權限");
-    const profile = await liff.getProfile();
-    document.getElementById("lineName").textContent = profile.displayName || "LINE 使用者";
-    if (profile.pictureUrl) {
-      document.getElementById("profileImage").src = profile.pictureUrl;
-      document.getElementById("profileImage").classList.remove("hidden");
+    try {
+      await liff.init({ liffId: config.liffId });
+      if (liff.isLoggedIn()) {
+        idToken = liff.getIDToken();
+        accessToken = liff.getAccessToken() || "";
+        const profile = await liff.getProfile();
+        document.getElementById("lineName").textContent = profile.displayName || "LINE 使用者";
+        if (profile.pictureUrl) {
+          document.getElementById("profileImage").src = profile.pictureUrl;
+          document.getElementById("profileImage").classList.remove("hidden");
+        }
+        document.getElementById("profilePanel").classList.remove("hidden");
+        await loadSession();
+        return;
+      }
+    } catch (_error) {
+      idToken = "";
+      accessToken = "";
     }
-    document.getElementById("profilePanel").classList.remove("hidden");
-    await loadSession();
+    showPanel("bindingPanel");
+    showMessage(statusMessage, "請選擇本人資料並輸入生日，即可報名或簽到", "");
   } catch (error) {
     showMessage(statusMessage, error.message, "error");
   }

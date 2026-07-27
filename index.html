@@ -12,7 +12,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="config.js?v=20260703-lineoa9"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
-  <script src="checkin.js?v=20260704-time11" defer></script>
+  <script src="checkin.js?v=20260728-birthday22" defer></script>
 </head>
 <body>
   <header class="hero">
@@ -38,31 +38,28 @@
     <section id="bindingPanel" class="card hidden">
       <div class="step-label">第一次使用</div>
       <h2>確認會長身分</h2>
-      <p class="muted">依序選擇專區、分區與分會，再輸入手機末四碼。</p>
+      <p class="muted">選擇專區與本人資料，再輸入生日。可完成 LINE 綁定；若 LINE 登入卡住，也可直接用生日登入報名與簽到。</p>
 
       <div class="form-grid">
         <label>專區
           <select id="zoneSelect"><option value="">請選擇專區</option></select>
         </label>
-        <label>分區
-          <select id="divisionSelect" disabled><option value="">請先選專區</option></select>
+        <label>分會／姓名
+          <select id="memberSelect" disabled><option value="">請先選專區</option></select>
         </label>
-        <label>分會與會長
-          <select id="memberSelect" disabled><option value="">請先選分區</option></select>
-        </label>
-        <label>手機末四碼
-          <input id="phoneLast4" type="tel" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" placeholder="例如 1234">
+        <label>生日
+          <input id="birthdayInput" type="text" inputmode="numeric" autocomplete="bday" placeholder="例如 7/27 或 0727">
         </label>
       </div>
 
-      <button id="bindingButton" type="button">核對並綁定 LINE</button>
-      <p class="privacy-note">完整手機號碼只保存在管理端，不會下載到此頁面。</p>
+      <button id="bindingButton" type="button">核對生日並登入</button>
+      <p class="privacy-note">生日只用於身分核對；若此頁是從 LINE 內開啟，核對成功後會同步綁定 LINE。</p>
     </section>
 
     <section id="pendingPanel" class="card hidden">
       <div class="status-icon pending-icon">!</div>
       <h2>等待管理者確認</h2>
-      <p>手機末四碼未能自動核對。管理者確認並修正電話後，會完成 LINE 綁定。</p>
+      <p>生日未能自動核對。管理者確認後，會完成 LINE 綁定。</p>
       <button id="pendingRefreshButton" class="secondary" type="button">重新確認狀態</button>
     </section>
 

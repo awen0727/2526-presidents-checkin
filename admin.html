@@ -12,7 +12,7 @@
   <script src="config.js?v=20260725-birthday20"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260620-xlsx1" defer></script>
-  <script src="admin.js?v=20260725-birthday20" defer></script>
+  <script src="admin.js?v=20260728-birthday22" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -175,7 +175,7 @@
       <div id="reviewsTab" class="admin-tab-panel hidden">
         <section class="card">
           <h2>待人工確認</h2>
-          <p class="muted">確認本人身分後，可修正完整手機號碼並核准 LINE 綁定。</p>
+          <p class="muted">確認本人身分後，可核准 LINE 綁定；新的自動核對改用生日。</p>
           <div id="noRequests" class="empty-state">目前沒有待確認申請。</div>
           <div id="requestList" class="review-list"></div>
         </section>
@@ -184,19 +184,13 @@
       <div id="membersTab" class="admin-tab-panel hidden">
         <section class="card">
           <div class="section-heading">
-            <div><h2>會長資料</h2><p class="muted">可用專區、分區、會名快速篩選，再搭配關鍵字搜尋。</p></div>
+            <div><h2>會長資料</h2><p class="muted">可用專區快速篩選，再搭配關鍵字搜尋。顧問名單也會列在這裡。</p></div>
             <div class="member-filters">
               <select id="memberZoneFilter">
                 <option value="">全部專區</option>
               </select>
-              <select id="memberDivisionFilter">
-                <option value="">全部分區</option>
-              </select>
-              <select id="memberClubFilter">
-                <option value="">全部會名</option>
-              </select>
               <select id="participationFilter">
-                <option value="all">全部會長</option>
+                <option value="all">全部人員</option>
                 <option value="participating">今年參加</option>
                 <option value="not_participating">今年未參加</option>
               </select>
@@ -260,13 +254,11 @@
             <div class="section-heading">
               <div>
                 <h2>個人出席日期查詢</h2>
-                <p class="muted">可直接挑選專區、分區、會名，查詢該位會長所有活動的出席日期。</p>
+                <p class="muted">先選專區，再從年度統計點姓名查看個人所有活動出席日期。</p>
               </div>
             </div>
             <div class="report-person-filters">
               <label>專區<select id="reportZoneFilter"><option value="">全部專區</option></select></label>
-              <label>分區<select id="reportDivisionFilter"><option value="">全部分區</option></select></label>
-              <label>會名<select id="reportClubFilter"><option value="">全部會名</option></select></label>
             </div>
             <div id="reportPersonSummary" class="person-summary hidden">
               <strong id="reportDetailName">出席明細</strong>
@@ -282,7 +274,7 @@
 
           <section class="card">
             <h2>年度出席統計</h2>
-            <p class="muted">點選會長姓名可直接打開個人出席日期明細。</p>
+            <p class="muted">點選姓名可直接打開個人出席日期明細。</p>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>會長</th><th>分會</th><th>出席</th><th>未出席</th><th>出席率</th></tr></thead>
