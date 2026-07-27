@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260725-birthday20">
+  <link rel="stylesheet" href="styles.css?v=20260728-target-groups30">
   <script src="config.js?v=20260725-birthday20"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260728-xlsx2" defer></script>
-  <script src="admin.js?v=20260728-event-export29" defer></script>
+  <script src="admin.js?v=20260728-target-groups30" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -317,6 +317,24 @@
         <thead><tr><th>日期</th><th>活動</th><th>狀態</th><th>簽到時間</th><th>來源</th></tr></thead>
         <tbody id="memberDetailRows"></tbody>
       </table>
+    </div>
+  </dialog>
+
+  <dialog id="lineGroupTargetDialog" class="member-detail-dialog">
+    <div class="dialog-header">
+      <div>
+        <h2 id="lineGroupTargetTitle">選擇 LINE 推播群組</h2>
+        <p id="lineGroupTargetMeta" class="muted"></p>
+      </div>
+      <button id="lineGroupTargetCancel" class="secondary small-button" type="button">取消</button>
+    </div>
+    <label class="checkbox-card line-group-target-all">
+      <input id="lineGroupTargetAll" type="checkbox" checked>
+      <span><strong>推播到全部啟用群組</strong><small>取消勾選後，可指定一個或多個群組。</small></span>
+    </label>
+    <div id="lineGroupTargetList" class="line-group-target-list"></div>
+    <div class="button-row dialog-actions">
+      <button id="lineGroupTargetSend" type="button">送出推播</button>
     </div>
   </dialog>
 </body>

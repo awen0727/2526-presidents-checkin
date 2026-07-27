@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-group-push-and-command-list-28";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-target-line-groups-29";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -726,21 +726,21 @@ function lineStatusFromMembers_(members) {
 function adminSendGroupRegistrationInvite_(payload) {
   const event = requireEvent_(payload.eventId);
   if (!isEventRegisterable_(event)) throw new Error("此活動已過期，無法推播報名通知");
-  const result = pushLineGroupsText_(enabledLineGroupIds_(), registrationInviteText_(event));
+  const result = pushLineGroupsText_(targetLineGroupIds_(payload), registrationInviteText_(event));
   audit_("line_group_registration_invite", "admin", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
   return { message: `已送出群組報名通知：${result.sent} 個群組，略過 ${result.skipped} 個` };
 }
 
 function adminSendGroupEventReminder_(payload) {
   const event = requireEvent_(payload.eventId);
-  const result = pushLineGroupsText_(enabledLineGroupIds_(), groupEventReminderText_(event));
+  const result = pushLineGroupsText_(targetLineGroupIds_(payload), groupEventReminderText_(event));
   audit_("line_group_event_reminder", "admin", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
   return { message: `已送出群組活動提醒：${result.sent} 個群組，略過 ${result.skipped} 個` };
 }
 
 function adminSendGroupCheckinReminder_(payload) {
   const event = requireEvent_(payload.eventId);
-  const result = pushLineGroupsText_(enabledLineGroupIds_(), groupCheckinReminderText_(event));
+  const result = pushLineGroupsText_(targetLineGroupIds_(payload), groupCheckinReminderText_(event));
   audit_("line_group_checkin_reminder", "admin", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
   return { message: `已送出群組簽到提醒：${result.sent} 個群組，略過 ${result.skipped} 個` };
 }
@@ -1187,6 +1187,23 @@ function enabledLineGroupIds_() {
   const groups = lineGroupRows_().filter(group => lineGroupStatus_(group) === "enabled");
   if (!groups.length) throw new Error("尚未綁定任何啟用中的 LINE 群組");
   return groups.map(group => group.group_id);
+}
+
+function targetLineGroupIds_(payload) {
+  const selectedIds = Array.isArray(payload.groupIds)
+    ? payload.groupIds.map(id => String(id || "").trim()).filter(Boolean)
+    : [];
+  if (!selectedIds.length) return enabledLineGroupIds_();
+  const enabledGroups = lineGroupRows_().filter(group => lineGroupStatus_(group) === "enabled" && group.group_id);
+  if (!enabledGroups.length) throw new Error("尚未綁定任何啟用中的 LINE 群組");
+  const enabledById = {};
+  enabledGroups.forEach(group => {
+    enabledById[group.group_id] = true;
+  });
+  const uniqueIds = Array.from(new Set(selectedIds));
+  const invalidIds = uniqueIds.filter(id => !enabledById[id]);
+  if (invalidIds.length) throw new Error("選取的 LINE 群組不存在或未啟用");
+  return uniqueIds;
 }
 
 function registrationInviteText_(event) {

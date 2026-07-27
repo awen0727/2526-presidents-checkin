@@ -202,6 +202,98 @@
     });
   }
 
+  function enabledLineGroups() {
+    return ((state.lineOfficial && state.lineOfficial.groups) || [])
+      .filter(group => group && group.group_id && group.status !== "disabled");
+  }
+
+  function chooseLineTargetGroups(event, label) {
+    const groups = enabledLineGroups();
+    if (!groups.length) throw new Error("尚未綁定任何啟用中的 LINE 群組");
+    const dialog = document.getElementById("lineGroupTargetDialog");
+    const title = document.getElementById("lineGroupTargetTitle");
+    const meta = document.getElementById("lineGroupTargetMeta");
+    const allInput = document.getElementById("lineGroupTargetAll");
+    const list = document.getElementById("lineGroupTargetList");
+    const sendButton = document.getElementById("lineGroupTargetSend");
+    const cancelButton = document.getElementById("lineGroupTargetCancel");
+    if (!dialog || !title || !meta || !allInput || !list || !sendButton || !cancelButton) {
+      return [];
+    }
+
+    title.textContent = `選擇 ${label || "LINE 推播"} 群組`;
+    meta.textContent = `${event.event_date} ${event.name}`;
+    allInput.checked = true;
+    list.replaceChildren();
+    groups.forEach(group => {
+      const option = makeElement("label", "line-group-target-option");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = group.group_id;
+      input.disabled = true;
+      const text = makeElement("span");
+      text.append(
+        makeElement("strong", "", group.group_name || "未命名群組"),
+        makeElement("small", "", group.group_id)
+      );
+      option.append(input, text);
+      list.appendChild(option);
+    });
+
+    function syncSpecificTargets() {
+      const specificInputs = list.querySelectorAll("input[type='checkbox']");
+      specificInputs.forEach(input => {
+        input.disabled = allInput.checked;
+        if (allInput.checked) input.checked = false;
+      });
+      sendButton.textContent = allInput.checked ? `送出到全部啟用群組（${groups.length}）` : "送出到指定群組";
+    }
+
+    syncSpecificTargets();
+    return new Promise(resolve => {
+      let settled = false;
+      const cleanup = () => {
+        allInput.removeEventListener("change", syncSpecificTargets);
+        sendButton.removeEventListener("click", handleSend);
+        cancelButton.removeEventListener("click", handleCancel);
+        dialog.removeEventListener("cancel", handleCancel);
+        dialog.removeEventListener("close", handleClose);
+      };
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (dialog.open) dialog.close();
+        resolve(value);
+      };
+      const handleSend = () => {
+        if (allInput.checked) {
+          finish([]);
+          return;
+        }
+        const groupIds = Array.from(list.querySelectorAll("input[type='checkbox']:checked")).map(input => input.value);
+        if (!groupIds.length) {
+          showMessage(adminMessage, "請至少選擇一個 LINE 群組，或勾選全部啟用群組。", "error");
+          return;
+        }
+        finish(groupIds);
+      };
+      const handleCancel = event => {
+        if (event) event.preventDefault();
+        finish(null);
+      };
+      const handleClose = () => {
+        finish(null);
+      };
+      allInput.addEventListener("change", syncSpecificTargets);
+      sendButton.addEventListener("click", handleSend);
+      cancelButton.addEventListener("click", handleCancel);
+      dialog.addEventListener("cancel", handleCancel);
+      dialog.addEventListener("close", handleClose);
+      dialog.showModal();
+    });
+  }
+
   function renderManualMembers() {
     const attendedIds = new Set(state.attendance.map(row => row.member_id));
     const select = document.getElementById("manualMember");
@@ -273,15 +365,15 @@
       });
       exportEventAttendanceButton.disabled = Number(event.attendance_count || 0) === 0;
       const groupInviteButton = makeButton("推播報名", "secondary compact-button", () => {
-        sendLineAction(event, "adminSendGroupRegistrationInvite", `確定推播報名通知到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
+        sendLineAction(event, "adminSendGroupRegistrationInvite", "推播報名", `確定送出報名通知嗎？\n\n活動：${event.name}`)
           .catch(error => showMessage(adminMessage, error.message, "error"));
       });
       const groupReminderButton = makeButton("活動提醒", "secondary compact-button", () => {
-        sendLineAction(event, "adminSendGroupEventReminder", `確定推播活動提醒到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
+        sendLineAction(event, "adminSendGroupEventReminder", "活動提醒", `確定送出活動提醒嗎？\n\n活動：${event.name}`)
           .catch(error => showMessage(adminMessage, error.message, "error"));
       });
       const groupCheckinButton = makeButton("簽到提醒", "secondary compact-button", () => {
-        sendLineAction(event, "adminSendGroupCheckinReminder", `確定推播簽到提醒到所有啟用中的 LINE 群組嗎？\n\n活動：${event.name}`)
+        sendLineAction(event, "adminSendGroupCheckinReminder", "簽到提醒", `確定送出簽到提醒嗎？\n\n活動：${event.name}`)
           .catch(error => showMessage(adminMessage, error.message, "error"));
       });
       const registrationStatusButton = makeButton(
@@ -804,12 +896,15 @@
     });
   }
 
-  async function sendLineAction(event, action, confirmation) {
+  async function sendLineAction(event, action, label, confirmation) {
     if (localPreview) {
       showMessage(adminMessage, `${event.name}：本機預覽已模擬送出 LINE 通知`, "success");
       return;
     }
-    await runAction({ action, eventId: event.event_id }, confirmation);
+    const groupIds = await chooseLineTargetGroups(event, label);
+    if (groupIds === null) return;
+    const targetLabel = groupIds.length ? `指定 ${groupIds.length} 個群組` : "全部啟用群組";
+    await runAction({ action, eventId: event.event_id, groupIds }, `${confirmation}\n\n推播目標：${targetLabel}`);
   }
 
   function render() {

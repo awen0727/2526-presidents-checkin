@@ -135,6 +135,26 @@ button.danger { border-color: #e3aaa6; color: var(--danger); }
 .compact-empty { margin-top: 12px; padding: 12px; }
 .compact-list { margin-top: 12px; }
 .line-group-card { background: #ffffff; }
+.line-group-target-all { margin: 8px 0 12px; }
+.line-group-target-list { display: grid; gap: 10px; margin: 12px 0 18px; }
+.line-group-target-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.line-group-target-option input { width: 18px; min-height: 18px; margin-top: 2px; }
+.line-group-target-option strong, .line-group-target-option small { display: block; }
+.line-group-target-option small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.dialog-actions { justify-content: flex-end; }
 .event-status-grid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 6px; margin-top: 8px; }
 .event-status-grid span { padding: 6px 8px; border-radius: 8px; background: #eef3f8; font-size: .86rem; font-weight: 700; }
 .status-open { color: var(--success); background: #dbf4ea !important; }
