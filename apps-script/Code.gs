@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-birthday-login-advisors-22";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-attendance-backfill-23";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -120,6 +120,7 @@ function route_(payload) {
     adminSetEventStatus: adminSetEventStatus_,
     adminSetEventGate: adminSetEventGate_,
     adminDeleteEvent: adminDeleteEvent_,
+    adminBackfillAttendance: adminBackfillAttendance_,
     adminManualCheckIn: adminManualCheckIn_,
     adminRemoveAttendance: adminRemoveAttendance_,
     adminUpdateMemberPhone: adminUpdateMemberPhone_,
@@ -591,6 +592,31 @@ function adminManualCheckIn_(payload) {
   return { message: `${member.name || member.club + "會會長"}，已由管理者完成簽到` };
 }
 
+function adminBackfillAttendance_(payload) {
+  const eventId = cleanText_(payload.eventId, 60, "活動編號");
+  const memberId = cleanText_(payload.memberId, 30, "人員編號");
+  const event = findOne_(SHEETS.EVENTS, "event_id", eventId);
+  if (!event) throw new Error("找不到活動");
+  const member = findMemberById_(memberId);
+  if (!member || !isParticipating_(member)) throw new Error("此人員未列入今年參加名單");
+  const duplicate = findRows_(SHEETS.ATTENDANCE, row =>
+    row.event_id === event.event_id && row.member_id === member.member_id
+  )[0];
+  if (duplicate) throw new Error("此人員已完成該活動簽到，無法重複補登");
+  const checkinAt = cleanBackfillCheckinAt_(payload.checkinAt, event);
+  append_(SHEETS.ATTENDANCE, {
+    attendance_id: id_("AT"),
+    event_id: event.event_id,
+    member_id: member.member_id,
+    name_snapshot: member.name,
+    club_snapshot: member.club,
+    checkin_at: checkinAt,
+    source: "ADMIN_BACKFILL"
+  });
+  audit_("attendance_backfilled", "admin", member.member_id, `${event.event_id}; ${checkinAt}`);
+  return { message: `${event.name} 已補登 ${member.club}｜${member.name || "姓名待補"} 出席紀錄` };
+}
+
 function adminRemoveAttendance_(payload) {
   const attendanceId = cleanText_(payload.attendanceId, 80, "簽到編號");
   const attendance = findOne_(SHEETS.ATTENDANCE, "attendance_id", attendanceId);
@@ -1006,6 +1032,18 @@ function cleanEventTime_(value) {
   const match = text.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
   if (!match) throw new Error("活動時間格式不正確，請使用 HH:mm");
   return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function cleanBackfillCheckinAt_(value, event) {
+  const text = String(value == null ? "" : value).trim();
+  const fallback = eventStart_(event);
+  if (!text) return fallback.toISOString();
+  const normalized = text.replace(" ", "T");
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) throw new Error("補登簽到時間格式不正確");
+  const parsed = new Date(`${match[1]}T${match[2]}:${match[3]}:00+08:00`);
+  if (Number.isNaN(parsed.getTime())) throw new Error("補登簽到時間格式不正確");
+  return parsed.toISOString();
 }
 
 function eventStart_(event) {

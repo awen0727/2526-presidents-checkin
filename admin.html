@@ -12,7 +12,7 @@
   <script src="config.js?v=20260725-birthday20"></script>
   <script src="common.js?v=20260620-sort1" defer></script>
   <script src="xlsx.js?v=20260620-xlsx1" defer></script>
-  <script src="admin.js?v=20260728-birthday22" defer></script>
+  <script src="admin.js?v=20260728-backfill23" defer></script>
 </head>
 <body>
   <header class="hero compact-hero">
@@ -129,6 +129,20 @@
           <h2>活動紀錄</h2>
           <div id="noEvents" class="empty-state">尚未建立活動。</div>
           <div id="eventList" class="manage-list"></div>
+        </section>
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <h2>活動紀錄補登</h2>
+              <p class="muted">用於紙本簽到或現場漏簽後補，會寫入指定活動的出席紀錄。</p>
+            </div>
+          </div>
+          <div class="form-grid event-form">
+            <label>活動<select id="backfillEvent"><option value="">請選擇活動</option></select></label>
+            <label>人員<select id="backfillMember"><option value="">請選擇人員</option></select></label>
+            <label>簽到時間<input id="backfillCheckinAt" type="datetime-local"></label>
+          </div>
+          <button id="backfillAttendanceButton" type="button">補登出席紀錄</button>
         </section>
         <section id="registrationReportCard" class="card hidden">
           <div class="section-heading">

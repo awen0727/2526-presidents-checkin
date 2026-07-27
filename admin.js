@@ -115,6 +115,11 @@
     return [event.event_date, event.event_time].filter(Boolean).join(" ");
   }
 
+  function toDatetimeLocalValue(event) {
+    if (!event || !event.event_date) return "";
+    return `${event.event_date}T${event.event_time || "18:00"}`;
+  }
+
   async function runAction(payload, confirmation) {
     if (confirmation && !window.confirm(confirmation)) return;
     showMessage(adminMessage, "處理中...", "");
@@ -320,6 +325,37 @@
       card.append(info, actions);
       list.appendChild(card);
     });
+    renderBackfillForm();
+  }
+
+  function renderBackfillForm() {
+    const eventSelect = document.getElementById("backfillEvent");
+    const memberSelect = document.getElementById("backfillMember");
+    const timeInput = document.getElementById("backfillCheckinAt");
+    const selectedEventId = eventSelect.value;
+    const selectedMemberId = memberSelect.value;
+
+    eventSelect.replaceChildren(new Option("請選擇活動", ""));
+    [...state.events]
+      .sort((a, b) => String(b.event_date || "").localeCompare(String(a.event_date || "")))
+      .forEach(event => eventSelect.appendChild(new Option(`${eventMeta(event)}｜${event.name}`, event.event_id)));
+    eventSelect.value = state.events.some(event => event.event_id === selectedEventId) ? selectedEventId : "";
+
+    memberSelect.replaceChildren(new Option("請選擇人員", ""));
+    state.members
+      .filter(member => member.participating)
+      .sort((a, b) => compareLabels(a.zone, b.zone)
+        || compareLabels(a.division, b.division)
+        || compareLabels(a.club, b.club)
+        || compareLabels(a.name, b.name))
+      .forEach(member => memberSelect.appendChild(new Option(`${member.club}｜${member.name || "姓名待補"}${member.role === "advisor" ? "（顧問）" : ""}`, member.member_id)));
+    memberSelect.value = state.members.some(member => member.member_id === selectedMemberId) ? selectedMemberId : "";
+
+    const event = state.events.find(item => item.event_id === eventSelect.value);
+    if (!timeInput.value && event) timeInput.value = toDatetimeLocalValue(event);
+    eventSelect.disabled = state.events.length === 0;
+    memberSelect.disabled = state.members.filter(member => member.participating).length === 0;
+    document.getElementById("backfillAttendanceButton").disabled = eventSelect.disabled || memberSelect.disabled;
   }
 
   function renderRequest(request) {
@@ -844,6 +880,21 @@
       `建立「${name}」？${checkinOpen ? "\n\n目前開放中的簽到活動會自動關閉。" : ""}`
     ).then(() => { document.getElementById("eventName").value = ""; })
       .catch(error => showMessage(adminMessage, error.message, "error"));
+  });
+  document.getElementById("backfillEvent").addEventListener("change", event => {
+    const selectedEvent = state.events.find(item => item.event_id === event.target.value);
+    document.getElementById("backfillCheckinAt").value = toDatetimeLocalValue(selectedEvent);
+  });
+  document.getElementById("backfillAttendanceButton").addEventListener("click", () => {
+    const eventSelect = document.getElementById("backfillEvent");
+    const memberSelect = document.getElementById("backfillMember");
+    const checkinAt = document.getElementById("backfillCheckinAt").value;
+    if (!eventSelect.value) return showMessage(adminMessage, "請選擇要補登的活動", "error");
+    if (!memberSelect.value) return showMessage(adminMessage, "請選擇要補登的人員", "error");
+    runAction(
+      { action: "adminBackfillAttendance", eventId: eventSelect.value, memberId: memberSelect.value, checkinAt },
+      `確定補登「${eventSelect.options[eventSelect.selectedIndex].text}」\n人員：${memberSelect.options[memberSelect.selectedIndex].text}？`
+    ).catch(error => showMessage(adminMessage, error.message, "error"));
   });
   document.getElementById("manualCheckinButton").addEventListener("click", () => {
     const select = document.getElementById("manualMember");
