@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-report-after-event-time-31";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-report-closed-past-events-32";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -788,6 +788,7 @@ function sendTodayCheckinReminders() {
 }
 
 function adminAttendanceReport_(payload) {
+  expireStaleOpenEvents_();
   const members = memberRows_().filter(isParticipating_);
   const events = eventRows_().sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
   const completedEvents = events.filter(isEventCompletedForReport_);
@@ -1025,7 +1026,7 @@ function eventCloseAt_(event) {
 }
 
 function isEventCompletedForReport_(event) {
-  return nowDate_().getTime() >= eventStart_(event).getTime();
+  return eventCheckinStatus_(event) === "closed" && nowDate_().getTime() > eventCloseAt_(event).getTime();
 }
 
 function nowDate_() {
