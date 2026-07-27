@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-activity-command-only-27";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-group-push-and-command-list-28";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -67,6 +67,10 @@ function handleLineWebhook_(payload) {
         replyLineTextSafe_(event.replyToken, monthlyBirthdayText_());
         return;
       }
+      if (/^功能$/i.test(command)) {
+        replyLineTextSafe_(event.replyToken, officialCommandListText_());
+        return;
+      }
       if (/^活動$/i.test(command)) {
         replyLineTextSafe_(event.replyToken, officialAccountHelpText_());
       }
@@ -85,6 +89,7 @@ function parseLineCommand_(text) {
     /^綁定群組(?:\s+(.+))?$/i,
     /^解除群組$/i,
     /^本月壽星$/,
+    /^功能$/i,
     /^活動$/i
   ];
   return candidates.find(command => exactPatterns.some(pattern => pattern.test(command))) || "";
@@ -118,9 +123,6 @@ function route_(payload) {
     adminSetBulkParticipation: adminSetBulkParticipation_,
     adminRegistrationReport: adminRegistrationReport_,
     adminLineStatus: adminLineStatus_,
-    adminSendRegistrationInvite: adminSendRegistrationInvite_,
-    adminSendEventReminder: adminSendEventReminder_,
-    adminSendCheckinReminder: adminSendCheckinReminder_,
     adminSendGroupRegistrationInvite: adminSendGroupRegistrationInvite_,
     adminSendGroupEventReminder: adminSendGroupEventReminder_,
     adminSendGroupCheckinReminder: adminSendGroupCheckinReminder_,
@@ -717,38 +719,8 @@ function lineStatusFromMembers_(members) {
     groups: groups.map(publicLineGroup_),
     enabledGroupCount: groups.filter(group => lineGroupStatus_(group) === "enabled").length,
     checkinUrl: checkinUrl_(),
-    note: "官方帳號推播需設定 LINE_CHANNEL_ACCESS_TOKEN。個人推播需會長加入官方帳號；群組推播需官方帳號加入並綁定該群組。"
+    note: "官方帳號推播需設定 LINE_CHANNEL_ACCESS_TOKEN。活動推播僅發送至已啟用的 LINE 群組；群組需先加入官方帳號並完成綁定。"
   };
-}
-
-function adminSendRegistrationInvite_(payload) {
-  const event = requireEvent_(payload.eventId);
-  if (!isEventRegisterable_(event)) throw new Error("此活動已過期，無法推播報名通知");
-  const members = memberRows_().filter(member => isParticipating_(member) && member.line_user_id);
-  const message = registrationInviteText_(event);
-  const result = multicastLineText_(members.map(member => member.line_user_id), message);
-  audit_("line_registration_invite", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
-  return { message: `已送出報名通知：${result.sent} 位，略過 ${result.skipped} 位` };
-}
-
-function adminSendEventReminder_(payload) {
-  const event = requireEvent_(payload.eventId);
-  const members = registeredMembersForEvent_(event.event_id);
-  const result = multicastLineText_(members.map(member => member.line_user_id), eventReminderText_(event));
-  audit_("line_event_reminder", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
-  return { message: `已提醒已報名者：${result.sent} 位，略過 ${result.skipped} 位` };
-}
-
-function adminSendCheckinReminder_(payload) {
-  const event = requireEvent_(payload.eventId);
-  const attendanceIds = {};
-  findRows_(SHEETS.ATTENDANCE, row => row.event_id === event.event_id)
-    .forEach(row => { attendanceIds[row.member_id] = true; });
-  const members = registeredMembersForEvent_(event.event_id)
-    .filter(member => !attendanceIds[member.member_id]);
-  const result = multicastLineText_(members.map(member => member.line_user_id), checkinReminderText_(event));
-  audit_("line_checkin_reminder", "admin", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
-  return { message: `已提醒未簽到者：${result.sent} 位，略過 ${result.skipped} 位` };
 }
 
 function adminSendGroupRegistrationInvite_(payload) {
@@ -800,10 +772,9 @@ function sendTomorrowEventReminders() {
   const events = rows_(SHEETS.EVENTS).filter(event => event.event_date === tomorrow);
   let sent = 0;
   events.forEach(event => {
-    const members = registeredMembersForEvent_(event.event_id);
-    const result = multicastLineText_(members.map(member => member.line_user_id), eventReminderText_(event));
+    const result = pushLineGroupsText_(enabledLineGroupIds_(), groupEventReminderText_(event));
     sent += result.sent;
-    audit_("line_tomorrow_event_reminder", "trigger", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+    audit_("line_group_tomorrow_event_reminder", "trigger", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
   });
   return { events: events.length, sent };
 }
@@ -811,13 +782,8 @@ function sendTomorrowEventReminders() {
 function sendTodayCheckinReminders() {
   const event = getOpenEvent_();
   if (!event) return { event: null, sent: 0 };
-  const attendanceIds = {};
-  findRows_(SHEETS.ATTENDANCE, row => row.event_id === event.event_id)
-    .forEach(row => { attendanceIds[row.member_id] = true; });
-  const members = registeredMembersForEvent_(event.event_id)
-    .filter(member => !attendanceIds[member.member_id]);
-  const result = multicastLineText_(members.map(member => member.line_user_id), checkinReminderText_(event));
-  audit_("line_today_checkin_reminder", "trigger", event.event_id, `${result.sent} sent; ${result.skipped} skipped`);
+  const result = pushLineGroupsText_(enabledLineGroupIds_(), groupCheckinReminderText_(event));
+  audit_("line_group_today_checkin_reminder", "trigger", event.event_id, `${result.sent} groups; ${result.skipped} skipped`);
   return { event: publicEvent_(event), sent: result.sent };
 }
 
@@ -1538,6 +1504,16 @@ function memberRole_(member) {
   return "president";
 }
 
+function officialCommandListText_() {
+  return [
+    "2526會長聯誼會 LINE 指令",
+    "＠活動：活動報名、取消報名與當日簽到連結",
+    "＠本月壽星：列出本月壽星名單",
+    "＠綁定群組 群組名稱：將目前 LINE 群組設為推播群組",
+    "＠解除群組：停用目前 LINE 群組推播"
+  ].join("\n");
+}
+
 function officialAccountHelpText_() {
   return [
     "2526會長聯誼會服務中心",
@@ -1546,6 +1522,7 @@ function officialAccountHelpText_() {
     "",
     "首次使用請先完成 LINE 身分綁定。",
     "查詢本月壽星，請輸入「＠本月壽星」。",
+    "查詢指令清單，請輸入「＠功能」。",
     "如需綁定群組推播，請在群組輸入「＠綁定群組 群組名稱」。"
   ].join("\n");
 }
