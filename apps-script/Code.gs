@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-completed-report-events-30";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-report-after-event-time-31";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -1025,7 +1025,7 @@ function eventCloseAt_(event) {
 }
 
 function isEventCompletedForReport_(event) {
-  return nowDate_().getTime() > eventCloseAt_(event).getTime();
+  return nowDate_().getTime() >= eventStart_(event).getTime();
 }
 
 function nowDate_() {
