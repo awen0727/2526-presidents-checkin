@@ -582,6 +582,40 @@
     row.appendChild(cell);
   }
 
+  function safeFileName(value) {
+    return String(value || "未命名").replace(/[\\/:*?"<>|]/g, "-");
+  }
+
+  async function downloadXlsx(rows, fileName, sheetName) {
+    const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const blob = new Blob([window.PresidentsXlsx.create(rows, sheetName)], { type: mimeType });
+    const file = typeof File === "function" ? new File([blob], fileName, { type: mimeType }) : null;
+    let canShareFile = false;
+    try {
+      canShareFile = Boolean(file && navigator.canShare && navigator.canShare({ files: [file] }));
+    } catch (_error) {
+      canShareFile = false;
+    }
+    if (canShareFile) {
+      try {
+        await navigator.share({ files: [file], title: fileName });
+        return;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+      }
+    }
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 30000);
+  }
+
   function renderEvent() {
     const event = report.selectedEvent;
     const query = document.getElementById("reportMemberSearch").value.trim().toLowerCase();
@@ -590,6 +624,7 @@
     document.getElementById("reportSelectedEventMeta").textContent = event ? eventMeta(event) : "";
     const attended = report.selectedEventMembers.filter(member => member.attended).length;
     document.getElementById("reportSelectedEventBadge").textContent = event ? `已出席 ${attended}／${report.selectedEventMembers.length}` : "";
+    document.getElementById("exportReportEventAttendanceButton").disabled = !event || attended === 0;
     const rows = document.getElementById("reportEventRows");
     rows.replaceChildren();
     report.selectedEventMembers.filter(member => {
@@ -805,34 +840,31 @@
         event.event_date, event.name, record.club, record.name, formatDateTime(record.checkin_at), record.source
       ])
     ];
-    const fileName = `${event.event_date}-${event.name.replace(/[\\/:*?\"<>|]/g, "-")}-簽到名單.xlsx`;
-    const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const blob = new Blob([window.PresidentsXlsx.create(rows, "簽到名單")], { type: mimeType });
-    const file = typeof File === "function" ? new File([blob], fileName, { type: mimeType }) : null;
-    let canShareFile = false;
-    try {
-      canShareFile = Boolean(file && navigator.canShare && navigator.canShare({ files: [file] }));
-    } catch (_error) {
-      canShareFile = false;
-    }
-    if (canShareFile) {
-      try {
-        await navigator.share({ files: [file], title: fileName });
-        return;
-      } catch (error) {
-        if (error.name === "AbortError") return;
-      }
-    }
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = fileName;
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(() => {
-      URL.revokeObjectURL(link.href);
-      link.remove();
-    }, 30000);
+    const fileName = `${event.event_date}-${safeFileName(event.name)}-簽到名單.xlsx`;
+    await downloadXlsx(rows, fileName, "簽到名單");
+  }
+
+  async function exportReportEventAttendance() {
+    const event = report.selectedEvent;
+    const attendees = (report.selectedEventMembers || [])
+      .filter(member => member.attended)
+      .sort((a, b) => String(a.checkin_at || "").localeCompare(String(b.checkin_at || "")));
+    if (!event || !attendees.length) return;
+    const rows = [
+      ["活動日期", "活動名稱", "專區", "分區", "分會", "姓名", "簽到時間", "來源"],
+      ...attendees.map(member => [
+        event.event_date,
+        event.name,
+        member.zone || "",
+        member.division || "",
+        member.club || "",
+        member.name || "姓名待補",
+        formatDateTime(member.checkin_at),
+        member.source || ""
+      ])
+    ];
+    const fileName = `${event.event_date}-${safeFileName(event.name)}-出席人員名單.xlsx`;
+    await downloadXlsx(rows, fileName, "出席人員名單");
   }
 
   document.querySelectorAll(".admin-tab").forEach(button => {
@@ -920,6 +952,9 @@
   });
   document.getElementById("exportAttendanceButton").addEventListener("click", () => {
     exportAttendance().catch(error => showMessage(adminMessage, `Excel 匯出失敗：${error.message}`, "error"));
+  });
+  document.getElementById("exportReportEventAttendanceButton").addEventListener("click", () => {
+    exportReportEventAttendance().catch(error => showMessage(reportMessage, `Excel 匯出失敗：${error.message}`, "error"));
   });
   document.getElementById("memberSearch").addEventListener("input", renderMembers);
   document.getElementById("participationFilter").addEventListener("change", renderMembers);
