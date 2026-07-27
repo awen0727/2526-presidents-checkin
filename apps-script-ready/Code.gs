@@ -18,7 +18,7 @@ const CODE_SCHEMA = Object.freeze({
   AuditLogs: ["log_id", "action", "actor", "target", "details", "created_at"]
 });
 
-const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-attendance-backfill-23";
+const PRESIDENTS_API_VERSION = "2526-presidents-2026-07-28-advisor-birthdays-24";
 
 const DEFAULT_EVENT_TIME = "18:00";
 const REGISTRATION_CUTOFF_MINUTES = 90;
@@ -1363,7 +1363,8 @@ function monthlyBirthdays_() {
       { club: "愛馨", name: "林伶恩", month: 1, day: 5 },
       { club: "圓山", name: "陳致鵬", month: 1, day: 15 },
       { club: "菁彩", name: "沈秀嫻", month: 1, day: 28 },
-      { club: "造夢者", name: "徐湘筑", month: 1, day: 12 }
+      { club: "造夢者", name: "徐湘筑", month: 1, day: 12 },
+      { club: "顧問", name: "鄒玉露", month: 1, day: 5 }
     ],
     2: [
       { club: "百齡", name: "郭顯彰", month: 2, day: 23 },
@@ -1371,14 +1372,17 @@ function monthlyBirthdays_() {
       { club: "信德", name: "莊雨真", month: 2, day: 28 },
       { club: "吉達", name: "簡長春", month: 2, day: 25 },
       { club: "吉翔", name: "梁凱鈞", month: 2, day: 23 },
-      { club: "卓越國際", name: "李德豪", month: 2, day: 24 }
+      { club: "卓越國際", name: "李德豪", month: 2, day: 24 },
+      { club: "顧問", name: "葉信志", month: 2, day: 1 }
     ],
     3: [
       { club: "愛華", name: "許秋月", month: 3, day: 10 },
       { club: "中北", name: "林熙悅", month: 3, day: 6 },
       { club: "南門", name: "陳怡伶", month: 3, day: 5 },
       { club: "德馨", name: "楊素瑾", month: 3, day: 12 },
-      { club: "世界商務", name: "孫志財", month: 3, day: 15 }
+      { club: "世界商務", name: "孫志財", month: 3, day: 15 },
+      { club: "顧問", name: "邱琇惠", month: 3, day: 9 },
+      { club: "顧問", name: "王志成", month: 3, day: 30 }
     ],
     4: [
       { club: "銀河", name: "蔡滄洲", month: 4, day: 24 },
@@ -1391,14 +1395,19 @@ function monthlyBirthdays_() {
       { club: "太平", name: "周念暉", month: 4, day: 15 },
       { club: "雙子星", name: "李芯媛", month: 4, day: 22 },
       { club: "長虹", name: "黃偉瑜", month: 4, day: 9 },
-      { club: "祥和", name: "傅木從", month: 4, day: 20 }
+      { club: "祥和", name: "傅木從", month: 4, day: 20 },
+      { club: "顧問", name: "林詩涵", month: 4, day: 9 },
+      { club: "顧問", name: "鄭俊雄", month: 4, day: 17 },
+      { club: "顧問", name: "曹雅蘭", month: 4, day: 5 },
+      { club: "顧問", name: "曾柏勝", month: 4, day: 10 }
     ],
     5: [
       { club: "長春", name: "楊存育", month: 5, day: 10 },
       { club: "力行", name: "林友清", month: 5, day: 25 },
       { club: "長江", name: "簡立其", month: 5, day: 21 },
       { club: "菁緻", name: "謝耀德", month: 5, day: 21 },
-      { club: "", name: "顏洋洋總監", month: 5, day: 25 }
+      { club: "", name: "顏洋洋總監", month: 5, day: 25 },
+      { club: "顧問", name: "柯季宏", month: 5, day: 24 }
     ],
     6: [
       { club: "西區女", name: "李正美", month: 6, day: 22 },
@@ -1421,7 +1430,8 @@ function monthlyBirthdays_() {
       { club: "華山", name: "謝尚軒", month: 7, day: 11 },
       { club: "丰勝", name: "簡漪凌", month: 7, day: 2 },
       { club: "南區", name: "陳幼梅", month: 7, day: 1 },
-      { club: "永安", name: "王鐘輝", month: 7, day: 23 }
+      { club: "永安", name: "王鐘輝", month: 7, day: 23 },
+      { club: "顧問", name: "羅賢俐總監", month: 7, day: 16 }
     ],
     8: [
       { club: "太陽", name: "郭文龍", month: 8, day: 1 },
@@ -1440,7 +1450,9 @@ function monthlyBirthdays_() {
       { club: "臺灣科大EMBA", name: "呂建明", month: 9, day: 7 },
       { club: "目倍果", name: "林宏展", month: 9, day: 6 },
       { club: "青山", name: "徐銘燦", month: 9, day: 30 },
-      { club: "一交", name: "陳景貽", month: 9, day: 4 }
+      { club: "一交", name: "陳景貽", month: 9, day: 4 },
+      { club: "顧問", name: "賴秀香秘書長", month: 9, day: 24 },
+      { club: "顧問", name: "陳昱齊", month: 9, day: 15 }
     ],
     10: [
       { club: "明星", name: "柯如憶", month: 10, day: 7 },
@@ -1450,7 +1462,11 @@ function monthlyBirthdays_() {
       { club: "大安", name: "李俊賢", month: 10, day: 15 },
       { club: "中原", name: "曾郁儒", month: 10, day: 24 },
       { club: "新台北", name: "孫國文", month: 10, day: 29 },
-      { club: "老松", name: "何俊達", month: 10, day: 13 }
+      { club: "老松", name: "何俊達", month: 10, day: 13 },
+      { club: "顧問", name: "鐘朝建", month: 10, day: 29 },
+      { club: "顧問", name: "邱秋鎮", month: 10, day: 2 },
+      { club: "顧問", name: "黃美麗前總監", month: 10, day: 8 },
+      { club: "顧問", name: "黃秀榕前總監", month: 10, day: 10 }
     ],
     11: [
       { club: "建華", name: "吳忠德", month: 11, day: 8 },
@@ -1474,7 +1490,8 @@ function monthlyBirthdays_() {
       { club: "至善", name: "張欽堯", month: 12, day: 14 },
       { club: "波麗士", name: "陳嘉偉", month: 12, day: 10 },
       { club: "至誠", name: "古富翔", month: 12, day: 15 },
-      { club: "", name: "楊孟峰秘書長", month: 12, day: 8 }
+      { club: "顧問", name: "楊孟峰", month: 12, day: 8 },
+      { club: "顧問", name: "黃惠珍", month: 12, day: 6 }
     ]
   };
 }
