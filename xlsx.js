@@ -135,7 +135,7 @@
       + "<cellXfs count=\"2\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\"/></xf></cellXfs>"
       + "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>";
     const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
-    const baseWidths = [13, 24, 18, 14, 22, 18, 22, 12];
+    const baseWidths = [13, 24, 18, 18, 18, 22, 16, 12];
     const columnWidths = Array.from({ length: maxColumns }, (_item, index) => baseWidths[index] || 16)
       .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
       .join("");

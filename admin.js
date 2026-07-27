@@ -851,16 +851,14 @@
       .sort((a, b) => String(a.checkin_at || "").localeCompare(String(b.checkin_at || "")));
     if (!event || !attendees.length) return;
     const rows = [
-      ["活動日期", "活動名稱", "專區", "分區", "分會", "姓名", "簽到時間", "來源"],
+      ["活動日期", "活動名稱", "專區", "分會", "姓名", "簽到時間"],
       ...attendees.map(member => [
         event.event_date,
         event.name,
         member.zone || "",
-        member.division || "",
         member.club || "",
         member.name || "姓名待補",
-        formatDateTime(member.checkin_at),
-        member.source || ""
+        formatDateTime(member.checkin_at)
       ])
     ];
     const fileName = `${event.event_date}-${safeFileName(event.name)}-出席人員名單.xlsx`;
